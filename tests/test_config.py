@@ -54,6 +54,12 @@ class TargetConfigTests(unittest.TestCase):
             self.assertIn("rtc_use_h264=false", args)
             self.assertIn("rtc_use_h265=true", args)
 
+    def test_macos_applies_codec_license_mapping_patch(self) -> None:
+        self.assertIn("codec_licenses.patch", get_target("macos-x64").patches)
+        self.assertIn("codec_licenses.patch", get_target("macos-arm64").patches)
+        self.assertNotIn("codec_licenses.patch", get_target("android").patches)
+        self.assertNotIn("codec_licenses.patch", get_target("ios").patches)
+
     def test_unknown_target_is_rejected(self) -> None:
         with self.assertRaisesRegex(UnknownTargetError, "unsupported target"):
             get_target("linux")

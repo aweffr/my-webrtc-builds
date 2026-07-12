@@ -9,7 +9,7 @@ from .compose import compose_macos_xcframework, create_release_manifest
 from .config import TARGETS, get_target
 from .observability import BuildJournal, collect_toolchain
 from .package import stage_and_package
-from .source import Workspace, prepare_source
+from .source import DEPOT_TOOLS_COMMIT, Workspace, prepare_source
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -30,6 +30,7 @@ def _parser() -> argparse.ArgumentParser:
     merge.add_argument("--arm64-package", required=True, type=Path)
     merge.add_argument("--work-dir", required=True, type=Path)
     merge.add_argument("--dist-dir", required=True, type=Path)
+    merge.add_argument("--builder-commit", required=True)
 
     release = subparsers.add_parser("release-manifest", help="validate and compose release data")
     release.add_argument("--revision", required=True, type=int)
@@ -38,6 +39,7 @@ def _parser() -> argparse.ArgumentParser:
     release.add_argument("--xcframework", required=True, type=Path)
     release.add_argument("--xcframework-metadata", required=True, type=Path)
     release.add_argument("--output-dir", required=True, type=Path)
+    release.add_argument("--builder-commit", required=True)
     return parser
 
 
@@ -53,12 +55,14 @@ def main(argv: list[str] | None = None) -> int:
             "configured",
             target=target.name,
             builder_commit=args.builder_commit,
+            depot_tools_commit=DEPOT_TOOLS_COMMIT,
         )
         with journal.phase("source-prepare", target=target.name):
             prepare_source(target, workspace, args.patch_dir.resolve(), runner)
         units = build_webrtc(target, workspace, runner, journal)
         with journal.phase("package", target=target.name):
             toolchain = collect_toolchain(target.name, runner)
+            toolchain["depot_tools_commit"] = DEPOT_TOOLS_COMMIT
             archive = stage_and_package(
                 target,
                 workspace,
@@ -81,6 +85,7 @@ def main(argv: list[str] | None = None) -> int:
                 arm64_archive=args.arm64_package.resolve(),
                 work_dir=work_dir,
                 output_dir=args.dist_dir.resolve(),
+                builder_commit=args.builder_commit,
                 runner=runner,
             )
         journal.record(
@@ -102,6 +107,7 @@ def main(argv: list[str] | None = None) -> int:
             xcframework=args.xcframework.resolve(),
             xcframework_metadata=args.xcframework_metadata.resolve(),
             output_dir=args.output_dir.resolve(),
+            builder_commit=args.builder_commit,
         )
         print(manifest)
         return 0

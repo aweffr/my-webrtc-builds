@@ -98,9 +98,12 @@ def compose_macos_xcframework(
     arm64_archive: Path,
     work_dir: Path,
     output_dir: Path,
+    builder_commit: str,
     runner,
 ) -> tuple[Path, Path]:
     inputs = prepare_macos_inputs(x64_archive, arm64_archive, work_dir / "inputs")
+    if inputs.x64_metadata.builder_commit != builder_commit:
+        raise CompositionError("workflow builder commit differs from thin package builder commit")
     x64_framework = _framework(inputs.x64_root)
     arm64_framework = _framework(inputs.arm64_root)
     if header_manifest(_framework_headers(x64_framework)) != header_manifest(
@@ -191,6 +194,7 @@ def create_release_manifest(
     xcframework: Path,
     xcframework_metadata: Path,
     output_dir: Path,
+    builder_commit: str,
 ) -> Path:
     expected_targets = {"android", "ios", "macos-x64", "macos-arm64"}
     if set(packages) != expected_targets:
@@ -229,6 +233,10 @@ def create_release_manifest(
         )
     xc_metadata = _load_xcframework_metadata(xcframework_metadata)
     reference = metadata[0]
+    if reference.builder_commit != builder_commit:
+        raise CompositionError(
+            "workflow builder commit differs from release package builder commit"
+        )
     if xc_metadata.get("schema_version") != 1 or xc_metadata.get("target") != "macos-universal":
         raise CompositionError("invalid XCFramework metadata identity")
     if xc_metadata.get("builder_commit") != reference.builder_commit:

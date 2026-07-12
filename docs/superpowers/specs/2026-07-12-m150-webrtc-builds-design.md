@@ -24,7 +24,7 @@ The project borrows proven concepts rather than either reference repository whol
 - From Shiguredo: exact M150 source pin, complete-object static archive assembly, dependency-completeness patch, generated third-party notices, and M150 H.265 patches.
 - From stasel: building `sdk:mac_framework_objc` and packaging Apple frameworks.
 
-Only these source patches are vendored: `add_deps.patch`, `h265.patch`, `h265_ios.patch`, and `h265_android.patch`. Proxy, simulcast, Sora SDK, TLS, audio-device, and milestone-update patches remain out of scope.
+Only these behavior patches are vendored: `add_deps.patch`, `h265.patch`, `h265_ios.patch`, and `h265_android.patch`. A project-maintained `codec_licenses.patch` adds the FFmpeg and OpenH264 license-file mappings required by the M150 notice generator after those dependencies enter the graph; it does not change codec behavior. Proxy, simulcast, Sora SDK, TLS, audio-device, and milestone-update patches remain out of scope.
 
 ## Platform contracts
 
@@ -79,7 +79,7 @@ Binary packages are:
 - `webrtc-m150-macos-arm64.tar.gz`
 - `WebRTC-m150-macos-universal.xcframework.zip`
 
-Every package includes or is accompanied by machine-readable metadata containing schema version, target, source version, builder commit, configuration fingerprint, GN arguments, patch hashes, runner/toolchain details, and payload checksums. Static packages also contain upstream `LICENSE`, `PATENTS`, `AUTHORS`, generated third-party `NOTICE`, and `SHA256SUMS`.
+Every package includes or is accompanied by machine-readable metadata containing schema version, target, source version, builder commit, configuration fingerprint, GN arguments, patch hashes, runner/toolchain details (including the M150-pinned `depot_tools` commit), and payload checksums. Static packages also contain upstream `LICENSE`, `PATENTS`, `AUTHORS`, generated third-party `NOTICE`, and `SHA256SUMS`.
 
 ## Error handling and verification
 

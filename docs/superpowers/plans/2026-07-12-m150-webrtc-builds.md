@@ -68,13 +68,14 @@
 - Create: `patches/m150/h265.patch`
 - Create: `patches/m150/h265_ios.patch`
 - Create: `patches/m150/h265_android.patch`
+- Create: `patches/m150/codec_licenses.patch`
 - Create: `patches/m150/SOURCES.md`
 
 - [ ] Write failing tests for safe archive extraction, traversal rejection, header-manifest hashing, package layout, checksum generation, architecture command selection, and framework bundle validation.
 - [ ] Run the focused tests and confirm missing behavior.
 - [ ] Implement header/license collection, upstream third-party notice generation, target-specific layouts, tar/zip creation preserving symlinks, SHA-256 generation, and metadata emission.
 - [ ] Implement post-build verification for static archive members, Mach-O architectures, Android jar entries, framework plist/headers/symlinks, and required codec symbols.
-- [ ] Vendor only the four approved patches from Shiguredo tag `m150.7871.3.0`, preserving headers and recording source URLs and SHA-256 values.
+- [ ] Vendor only the four approved behavior patches from Shiguredo tag `m150.7871.3.0`, preserving headers and recording source URLs and SHA-256 values; add the minimal project-maintained codec license mapping required for generated notices.
 - [ ] Re-run all unit tests and `git diff --check`.
 - [ ] Commit with `feat: package and verify WebRTC artifacts`.
 

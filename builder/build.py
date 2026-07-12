@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from contextlib import nullcontext
 from pathlib import Path
@@ -32,9 +33,7 @@ def build_units(target: TargetConfig, workspace: Workspace) -> tuple[BuildUnit, 
 
 
 def _archiver(target: TargetConfig, workspace: Workspace) -> Path:
-    if target.name in {"android"}:
-        return workspace.src / "third_party/llvm-build/Release+Asserts/bin/llvm-ar"
-    return Path("/usr/bin/ar")
+    return workspace.src / "third_party/llvm-build/Release+Asserts/bin/llvm-ar"
 
 
 def _archive_objects(
@@ -49,20 +48,18 @@ def _archive_objects(
     output = unit.output_dir / "libwebrtc.a"
     output.unlink(missing_ok=True)
     archiver = _archiver(target, workspace)
-    chunk: list[Path] = []
-    size = 0
-    first = True
-    for object_file in object_files:
-        candidate_size = len(str(object_file)) + 1
-        if chunk and size + candidate_size > 96_000:
-            runner.run([archiver, "-rcs" if first else "-rs", output, *chunk])
-            first = False
-            chunk = []
-            size = 0
-        chunk.append(object_file)
-        size += candidate_size
-    if chunk:
-        runner.run([archiver, "-rcs" if first else "-rs", output, *chunk])
+    response_file = unit.output_dir / "libwebrtc-objects.rsp"
+    response_file.write_text(
+        "\n".join(json.dumps(str(object_file)) for object_file in object_files) + "\n"
+    )
+    runner.run([archiver, "rcs", output, f"@{response_file}"])
+    archived_members = [
+        member for member in runner.capture([archiver, "t", output]).splitlines() if member.strip()
+    ]
+    if len(archived_members) != len(object_files):
+        raise BuildError(
+            f"archive contains {len(archived_members)} members; expected {len(object_files)}"
+        )
     return output
 
 

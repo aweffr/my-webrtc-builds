@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from builder.build import BuildError, build_units, build_webrtc
+from builder.build import BuildError, _archive_objects, build_units, build_webrtc
 from builder.config import SOURCE_VERSION, get_target
-from builder.source import Workspace, prepare_source
+from builder.source import DEPOT_TOOLS_COMMIT, Workspace, prepare_source
 
 
 class FakeRunner:
@@ -23,17 +23,29 @@ class FakeRunner:
     def capture(self, argv, *, cwd=None, env=None) -> str:
         self.calls.append(("capture", tuple(map(str, argv)), cwd))
         if tuple(argv[:3]) == ("git", "rev-parse", "HEAD"):
+            if cwd is not None and Path(cwd).name == "depot_tools":
+                return DEPOT_TOOLS_COMMIT
             return self.commit
         if tuple(argv[:3]) == ("gn", "args", "--list"):
             return "is_debug = false"
+        if argv and str(argv[0]).endswith("llvm-ar") and argv[1] == "t":
+            archive_call = next(
+                call[1]
+                for call in reversed(self.calls[:-1])
+                if call[1][0].endswith("llvm-ar") and call[1][1] == "rcs"
+            )
+            return "\n".join(
+                Path(line.strip('"')).name
+                for line in Path(archive_call[3].removeprefix("@")).read_text().splitlines()
+            )
         return ""
 
 
 class SourcePreparationTests(unittest.TestCase):
-    def test_depot_tools_first_run_bootstrap_is_not_disabled(self) -> None:
+    def test_depot_tools_cannot_self_update_after_explicit_bootstrap(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             environment = Workspace(Path(directory)).environment()
-        self.assertIsNone(environment.get("DEPOT_TOOLS_UPDATE"))
+        self.assertEqual(environment.get("DEPOT_TOOLS_UPDATE"), "0")
 
     def test_source_is_pinned_and_patches_are_checked_before_application(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -82,6 +94,49 @@ class SourcePreparationTests(unittest.TestCase):
 
 
 class BuildPlanTests(unittest.TestCase):
+    def test_archive_uses_one_response_file_for_duplicate_object_basenames(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            unit = build_units(get_target("macos-arm64"), workspace)[0]
+            first = unit.output_dir / "obj" / "one" / "encoder.o"
+            second = unit.output_dir / "obj" / "two" / "encoder.o"
+            first.parent.mkdir(parents=True)
+            second.parent.mkdir(parents=True)
+            first.write_bytes(b"first")
+            second.write_bytes(b"second")
+            runner = FakeRunner()
+
+            _archive_objects(get_target("macos-arm64"), workspace, unit, runner)
+
+            archive_calls = [
+                call[1]
+                for call in runner.calls
+                if call[1][0].endswith("llvm-ar") and call[1][1] == "rcs"
+            ]
+            self.assertEqual(len(archive_calls), 1)
+            self.assertEqual(archive_calls[0][1], "rcs")
+            response_file = Path(archive_calls[0][3].removeprefix("@"))
+            members = response_file.read_text().splitlines()
+            self.assertEqual(len(members), 2)
+            self.assertNotEqual(members[0], members[1])
+
+    def test_archive_rejects_missing_members_after_creation(self) -> None:
+        class DroppingArchiver(FakeRunner):
+            def capture(self, argv, *, cwd=None, env=None) -> str:
+                if argv and str(argv[0]).endswith("llvm-ar") and argv[1] == "t":
+                    return "encoder.o"
+                return super().capture(argv, cwd=cwd, env=env)
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            unit = build_units(get_target("macos-arm64"), workspace)[0]
+            for parent in ("one", "two"):
+                path = unit.output_dir / "obj" / parent / "encoder.o"
+                path.parent.mkdir(parents=True)
+                path.write_bytes(parent.encode())
+            with self.assertRaisesRegex(BuildError, "archive contains 1 members; expected 2"):
+                _archive_objects(get_target("macos-arm64"), workspace, unit, DroppingArchiver())
+
     def test_ios_has_separate_device_and_simulator_units(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             units = build_units(get_target("ios"), Workspace(Path(directory)))

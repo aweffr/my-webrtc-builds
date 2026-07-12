@@ -75,6 +75,7 @@ jobs:
             --arm64-package inputs/arm64/webrtc-m150-macos-arm64.tar.gz \
             --work-dir "$WORK_DIR" \
             --dist-dir "$DIST_DIR" \
+            --builder-commit "$GITHUB_SHA" \
             2>&1 | tee "$DIAGNOSTICS_DIR/compose.log"
 
       - name: Upload XCFramework package

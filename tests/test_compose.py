@@ -100,6 +100,7 @@ class MacOSInputTests(unittest.TestCase):
                 arm64_archive=arm64,
                 work_dir=root / "work",
                 output_dir=root / "dist",
+                builder_commit="a" * 40,
                 runner=runner,
             )
             commands = runner.commands
@@ -114,6 +115,19 @@ class MacOSInputTests(unittest.TestCase):
             self.assertLess(lipo_index, xcode_index)
             self.assertTrue(archive.is_file())
             self.assertEqual(json.loads(metadata.read_text())["target"], "macos-universal")
+
+    def test_composition_rejects_workflow_commit_different_from_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaisesRegex(CompositionError, "workflow builder commit"):
+                compose_macos_xcframework(
+                    x64_archive=create_package(root, "macos-x64"),
+                    arm64_archive=create_package(root, "macos-arm64"),
+                    work_dir=root / "work",
+                    output_dir=root / "dist",
+                    builder_commit="b" * 40,
+                    runner=object(),
+                )
 
     def test_mixed_headers_or_apple_patch_set_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -153,10 +167,42 @@ class ReleaseManifestTests(unittest.TestCase):
                 xcframework=xcframework,
                 xcframework_metadata=xc_metadata,
                 output_dir=root / "release",
+                builder_commit="a" * 40,
             )
             payload = json.loads(manifest.read_text())
         self.assertEqual(payload["tag"], "m150.7871.3-r1")
         self.assertEqual(len(payload["assets"]), 5)
+
+    def test_release_rejects_workflow_commit_different_from_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packages = {
+                target: create_package(root, target)
+                for target in ("android", "ios", "macos-x64", "macos-arm64")
+            }
+            xcframework = root / "WebRTC-m150-macos-universal.xcframework.zip"
+            xcframework.write_bytes(b"xcframework")
+            xc_metadata = root / "xcframework-metadata.json"
+            xc_metadata.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "target": "macos-universal",
+                        "builder_commit": "a" * 40,
+                        "source": build_metadata("macos-x64").source,
+                        "header_manifest": "same-headers",
+                    }
+                )
+            )
+            with self.assertRaisesRegex(CompositionError, "workflow builder commit"):
+                create_release_manifest(
+                    revision=1,
+                    packages=packages,
+                    xcframework=xcframework,
+                    xcframework_metadata=xc_metadata,
+                    output_dir=root / "release",
+                    builder_commit="b" * 40,
+                )
 
     def test_release_rejects_missing_platform(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -173,6 +219,7 @@ class ReleaseManifestTests(unittest.TestCase):
                     xcframework=xcframework,
                     xcframework_metadata=xc_metadata,
                     output_dir=root / "release",
+                    builder_commit="a" * 40,
                 )
 
 

@@ -119,9 +119,12 @@ jobs:
             --xcframework inputs/xcframework/WebRTC-m150-macos-universal.xcframework.zip \
             --xcframework-metadata inputs/xcframework/xcframework-metadata.json \
             --output-dir "$RELEASE_DIR" \
+            --builder-commit "$GITHUB_SHA" \
             2>&1 | tee "$DIAGNOSTICS_DIR/release-validation.log"
           TAG="$(jq -r .tag "$RELEASE_DIR/release-manifest.json")"
+          BUILDER_COMMIT="$(jq -r .builder_commit "$RELEASE_DIR/release-manifest.json")"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "builder_commit=$BUILDER_COMMIT" >> "$GITHUB_OUTPUT"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $TAG already exists" >&2
             exit 1
@@ -140,7 +143,7 @@ jobs:
           TAG="${{ steps.manifest.outputs.tag }}"
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
+            --target "${{ steps.manifest.outputs.builder_commit }}" \
             --draft \
             --title "WebRTC M150 build r${{ inputs.revision }}" \
             --notes "Pinned WebRTC branch-heads/7871@{#3}, commit 1f975dfd761af6e5d76d28333191973b258d82a8." \

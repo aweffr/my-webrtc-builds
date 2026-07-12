@@ -145,7 +145,12 @@ TARGETS: Mapping[str, TargetConfig] = MappingProxyType(
             runner="macos-26-intel",
             architectures=("x64",),
             deployment_target="14.0",
-            patches=("add_deps.patch", "h265.patch", "h265_ios.patch"),
+            patches=(
+                "add_deps.patch",
+                "h265.patch",
+                "h265_ios.patch",
+                "codec_licenses.patch",
+            ),
             ninja_targets=_APPLE_TARGETS + ("sdk:mac_framework_objc",),
         ),
         "macos-arm64": TargetConfig(
@@ -153,7 +158,12 @@ TARGETS: Mapping[str, TargetConfig] = MappingProxyType(
             runner="macos-26",
             architectures=("arm64",),
             deployment_target="14.0",
-            patches=("add_deps.patch", "h265.patch", "h265_ios.patch"),
+            patches=(
+                "add_deps.patch",
+                "h265.patch",
+                "h265_ios.patch",
+                "codec_licenses.patch",
+            ),
             ninja_targets=_APPLE_TARGETS + ("sdk:mac_framework_objc",),
         ),
     }

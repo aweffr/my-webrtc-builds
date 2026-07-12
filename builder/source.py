@@ -7,6 +7,9 @@ from typing import Protocol
 
 from .config import SOURCE_VERSION, TargetConfig
 
+# This is the depot_tools revision recorded by the pinned WebRTC M150 DEPS file.
+DEPOT_TOOLS_COMMIT = "2f9bc10799af5aeb4a0ed903742ad69bb1d0ef75"
+
 
 class BuildError(RuntimeError):
     """The checked-out source or produced build violates the contract."""
@@ -45,7 +48,7 @@ class Workspace:
     def environment(self) -> dict[str, str]:
         environment = dict(os.environ)
         environment["PATH"] = f"{self.depot_tools}{os.pathsep}{environment.get('PATH', '')}"
-        environment.pop("DEPOT_TOOLS_UPDATE", None)
+        environment["DEPOT_TOOLS_UPDATE"] = "0"
         return environment
 
 
@@ -71,14 +74,44 @@ def prepare_source(
     workspace.root.mkdir(parents=True, exist_ok=True)
     environment = workspace.environment()
     if not workspace.depot_tools.exists():
+        workspace.depot_tools.mkdir(parents=True)
+        runner.run(["git", "init"], cwd=workspace.depot_tools)
         runner.run(
             [
                 "git",
-                "clone",
-                "--depth=1",
+                "remote",
+                "add",
+                "origin",
                 "https://chromium.googlesource.com/chromium/tools/depot_tools.git",
-                workspace.depot_tools,
-            ]
+            ],
+            cwd=workspace.depot_tools,
+        )
+        runner.run(
+            ["git", "fetch", "--depth=1", "origin", DEPOT_TOOLS_COMMIT],
+            cwd=workspace.depot_tools,
+        )
+        runner.run(
+            ["git", "checkout", "--detach", DEPOT_TOOLS_COMMIT],
+            cwd=workspace.depot_tools,
+        )
+    actual_depot_tools_commit = runner.capture(
+        ["git", "rev-parse", "HEAD"], cwd=workspace.depot_tools
+    )
+    if actual_depot_tools_commit != DEPOT_TOOLS_COMMIT:
+        raise BuildError(
+            f"unexpected depot_tools commit {actual_depot_tools_commit!r}; "
+            f"expected {DEPOT_TOOLS_COMMIT}"
+        )
+    if not (workspace.depot_tools / "python3_bin_reldir.txt").is_file():
+        runner.run(
+            [
+                "bash",
+                "-c",
+                "source ./cipd_bin_setup.sh; cipd_bin_setup; "
+                "source ./bootstrap_python3; bootstrap_python3",
+            ],
+            cwd=workspace.depot_tools,
+            env=environment,
         )
     if not workspace.src.exists():
         workspace.checkout_root.mkdir(parents=True, exist_ok=True)
