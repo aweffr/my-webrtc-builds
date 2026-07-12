@@ -1,3 +1,4 @@
+import json
 import re
 import shutil
 import subprocess
@@ -11,6 +12,11 @@ CORE = ROOT / "overlays" / "m150" / "common" / "api" / "cast_tuning"
 
 
 class CastTuningNativeContractTests(unittest.TestCase):
+    def test_example_profiles_are_valid_json(self) -> None:
+        for path in (ROOT / "examples").glob("*.json"):
+            with self.subTest(path=path.name):
+                json.loads(path.read_text())
+
     def test_macos_factory_hook_does_not_pull_software_codec_factory(self) -> None:
         patch = (ROOT / "patches" / "m150" / "cast_tuning_hooks.patch").read_text()
         self.assertNotIn('":default_codec_factory_objc"', patch)

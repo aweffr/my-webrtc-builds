@@ -457,7 +457,11 @@ std::optional<CastTuningConfig> CastTuningConfig::ParseJsonWithOverrides(
     }
     MergeObject(overrides, &root);
   }
-  return ParseJson(JsonValueToString(root), error);
+  // M150's JsonValueToString() unconditionally removes one trailing byte,
+  // while the rolled JsonCpp writer no longer emits a trailing newline.
+  // Serialize directly here so the closing object delimiter is preserved.
+  Json::StreamWriterBuilder writer;
+  return ParseJson(Json::writeString(writer, root), error);
 }
 
 }  // namespace webrtc::cast_tuning
