@@ -80,10 +80,16 @@ def _framework_binary(root: Path) -> Path:
     raise VerificationError("WebRTC.framework binary is missing")
 
 
-def verify_binaries(target: str, root: Path, runner: CaptureRunner) -> None:
+def verify_binaries(
+    target: str,
+    root: Path,
+    runner: CaptureRunner,
+    *,
+    android_archiver: Path | str = "llvm-ar",
+) -> None:
     if target == "android":
         library = root / "lib" / "arm64-v8a" / "libwebrtc.a"
-        _expect_archive_members(runner, "llvm-ar", library)
+        _expect_archive_members(runner, str(android_archiver), library)
         jar_entries = runner.capture(["jar", "tf", root / "jar" / "webrtc.jar"])
         for entry in (
             "org/webrtc/HardwareVideoEncoderFactory.class",

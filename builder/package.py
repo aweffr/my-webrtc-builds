@@ -200,7 +200,16 @@ def stage_and_package(
     from .verify import verify_binaries, verify_package_layout
 
     verify_package_layout(target.name, stage)
-    verify_binaries(target.name, stage, runner)
+    verify_binaries(
+        target.name,
+        stage,
+        runner,
+        android_archiver=(
+            workspace.src / "third_party/llvm-build/Release+Asserts/bin/llvm-ar"
+            if target.name == "android"
+            else "llvm-ar"
+        ),
+    )
     archive = dist_dir / package_filename(target.name)
     create_tar_gz(stage, archive, arcname="webrtc")
     return archive

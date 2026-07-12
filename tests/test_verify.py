@@ -56,6 +56,30 @@ class FakeRunner:
 
 
 class BinaryVerificationTests(unittest.TestCase):
+    def test_android_can_use_hermetic_archiver(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "lib" / "arm64-v8a").mkdir(parents=True)
+            (root / "lib" / "arm64-v8a" / "libwebrtc.a").write_bytes(b"archive")
+            (root / "jar").mkdir()
+            (root / "jar" / "webrtc.jar").write_bytes(b"jar")
+            runner = FakeRunner(
+                {
+                    "/checkout/llvm-ar": "peer_connection.o",
+                    "jar": (
+                        "org/webrtc/HardwareVideoEncoderFactory.class\n"
+                        "org/webrtc/VideoEncoder$CodecSpecificInfoH265.class\n"
+                    ),
+                }
+            )
+            verify_binaries(
+                "android",
+                root,
+                runner,
+                android_archiver=Path("/checkout/llvm-ar"),
+            )
+        self.assertEqual(runner.commands[0][0], "/checkout/llvm-ar")
+
     def test_macos_checks_archives_framework_arch_and_codec_symbols(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

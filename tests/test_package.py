@@ -96,7 +96,7 @@ class PackageContractTests(unittest.TestCase):
             def capture(self, argv, *, cwd=None, env=None) -> str:
                 command = tuple(map(str, argv))
                 self.capture_commands.append(command)
-                if command[0] == "llvm-ar":
+                if command[0].endswith("/llvm-ar"):
                     return "peer_connection.o"
                 if command[:2] == ("jar", "tf"):
                     return (
@@ -143,7 +143,9 @@ class PackageContractTests(unittest.TestCase):
             self.assertTrue((package / "metadata.json").is_file())
             self.assertTrue((package / "lib" / "arm64-v8a" / "libwebrtc.a").is_file())
             self.assertTrue((package / "jar" / "webrtc.jar").is_file())
-            self.assertTrue(any(command[0] == "llvm-ar" for command in runner.capture_commands))
+            self.assertTrue(
+                any(command[0].endswith("/llvm-ar") for command in runner.capture_commands)
+            )
 
 
 if __name__ == "__main__":
