@@ -804,31 +804,6 @@ index 0000000000..07fa52cebc
 +
 +@end
 \ No newline at end of file
-diff --git a/sdk/objc/components/video_codec/RTCVideoEncoderFactorySimulcast.mm b/sdk/objc/components/video_codec/RTCVideoEncoderFactorySimulcast.mm
-index 3f7b0f0414..110c317ef5 100644
---- a/sdk/objc/components/video_codec/RTCVideoEncoderFactorySimulcast.mm
-+++ b/sdk/objc/components/video_codec/RTCVideoEncoderFactorySimulcast.mm
-@@ -1,6 +1,7 @@
- #import <Foundation/Foundation.h>
- 
- #import "RTCH264ProfileLevelId.h"
-+#import "RTCH265ProfileLevelId.h"
- #import "RTCMacros.h"
- #import "RTCVideoCodecInfo.h"
- #import "RTCVideoEncoderFactorySimulcast.h"
-@@ -109,6 +110,12 @@ - (instancetype)initWithPrimary:(id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)>)prima
-         RTCVideoCodecInfo *codec = [[RTCVideoCodecInfo alloc] initWithNativeSdpVideoFormat: format];
-         [codecs addObject: codec];
-     }
-+    // H265
-+    {
-+        RTC_OBJC_TYPE(RTCVideoCodecInfo) *codec =
-+            [[RTC_OBJC_TYPE(RTCVideoCodecInfo) alloc] initWithName:kRTCVideoCodecH265Name];
-+        [codecs addObject: codec];
-+    }
- 
-     return [codecs copy];
- }
 diff --git a/sdk/objc/components/video_codec/RTCVideoEncoderH265.h b/sdk/objc/components/video_codec/RTCVideoEncoderH265.h
 new file mode 100644
 index 0000000000..54d86807ec
