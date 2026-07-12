@@ -93,7 +93,9 @@ class FakeRunner:
     def capture(self, argv, *, cwd=None, env=None) -> str:
         command = tuple(map(str, argv))
         self.commands.append(command)
-        return self.responses.get(command[0], self.responses.get(Path(command[0]).name, ""))
+        normalized = command[0].replace("\\", "/")
+        basename = normalized.rsplit("/", maxsplit=1)[-1]
+        return self.responses.get(command[0], self.responses.get(basename, ""))
 
 
 class BinaryVerificationTests(unittest.TestCase):

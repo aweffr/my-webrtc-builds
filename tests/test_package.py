@@ -142,7 +142,7 @@ class PackageContractTests(unittest.TestCase):
             def capture(self, argv, *, cwd=None, env=None) -> str:
                 command = tuple(map(str, argv))
                 self.capture_commands.append(command)
-                if command[0].endswith("/llvm-ar"):
+                if command[0].replace("\\", "/").endswith("/llvm-ar"):
                     return "peer_connection.o"
                 if command[:2] == ("jar", "tf"):
                     return (
@@ -214,7 +214,10 @@ class PackageContractTests(unittest.TestCase):
                 {"common/cast_tuning.h", "android/cast_tuning.h"},
             )
             self.assertTrue(
-                any(command[0].endswith("/llvm-ar") for command in runner.capture_commands)
+                any(
+                    command[0].replace("\\", "/").endswith("/llvm-ar")
+                    for command in runner.capture_commands
+                )
             )
 
     def test_windows_stage_contains_coff_library_and_zip_payload(self) -> None:
