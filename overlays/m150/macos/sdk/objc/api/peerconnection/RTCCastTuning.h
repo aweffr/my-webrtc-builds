@@ -89,7 +89,7 @@ RTC_OBJC_EXPORT
 
 + (nullable RTC_OBJC_TYPE(RTCPeerConnectionFactory) *)
     peerConnectionFactoryWithEncoderFactory:
-        (nullable id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)>)encoderFactory
+        (nonnull id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)>)encoderFactory
                              decoderFactory:
                                  (nullable
                                       id<RTC_OBJC_TYPE(RTCVideoDecoderFactory)>)

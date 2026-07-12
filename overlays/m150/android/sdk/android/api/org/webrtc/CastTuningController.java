@@ -107,17 +107,17 @@ public final class CastTuningController implements AutoCloseable {
 
   private static native long nativeCreate(
       String baseJson, String profileOverride, String overridesJson);
-  private static native String nativeGetFieldTrials(long nativeController);
-  private static native int nativeGetPrerendererSmoothing(long nativeController);
-  private static native int nativeGetRelayOnly(long nativeController);
-  private static native int nativeGetDisableTcpCandidates(long nativeController);
-  private static native int nativeGetScreencastMinBitrateBps(long nativeController);
-  private static native int nativeGetRenderLeadMs(long nativeController);
-  private static native int nativeGetJitterMinimumMs(long nativeController);
-  private static native boolean nativeGetAndroidDecoderLowLatency(long nativeController);
-  private static native String nativeGetSessionId(long nativeController);
-  private static native String nativeGetEffectiveConfigHash(long nativeController);
-  private static native long nativeGetRevision(long nativeController);
-  private static native boolean nativeGetRecreateRequired(long nativeController);
-  private static native void nativeFree(long nativeController);
+  private static native String nativeGetFieldTrials(long pointer);
+  private static native int nativeGetPrerendererSmoothing(long pointer);
+  private static native int nativeGetRelayOnly(long pointer);
+  private static native int nativeGetDisableTcpCandidates(long pointer);
+  private static native int nativeGetScreencastMinBitrateBps(long pointer);
+  private static native int nativeGetRenderLeadMs(long pointer);
+  private static native int nativeGetJitterMinimumMs(long pointer);
+  private static native boolean nativeGetAndroidDecoderLowLatency(long pointer);
+  private static native String nativeGetSessionId(long pointer);
+  private static native String nativeGetEffectiveConfigHash(long pointer);
+  private static native long nativeGetRevision(long pointer);
+  private static native boolean nativeGetRecreateRequired(long pointer);
+  private static native void nativeFree(long pointer);
 }

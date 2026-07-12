@@ -53,6 +53,10 @@ Use `RTCCastTuningConfiguration`, `RTCCastTuningFactoryBuilder`, and
 `RTCCastTuningController` from the macOS framework. Android exposes
 `CastTuningConfig`, `CastTuningAndroidConfig`, and `CastTuningController`:
 
+The macOS factory builder requires an explicit hardware-capable
+`RTCVideoEncoderFactory` (for example, the VideoToolbox H264 factory). It does
+not pull in WebRTC's software codec factory implicitly.
+
 ```java
 CastTuningConfig config = CastTuningAndroidConfig.fromIntent(baseJson, intent);
 try (CastTuningController tuning = new CastTuningController(config)) {

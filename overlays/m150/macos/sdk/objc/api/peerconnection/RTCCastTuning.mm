@@ -8,7 +8,6 @@
 #import "RTCRtpReceiver+Private.h"
 #import "RTCRtpSender+Private.h"
 #import "RTCVideoTrack+Private.h"
-#import "components/video_codec/RTCDefaultVideoEncoderFactory.h"
 #import "components/video_codec/RTCVideoEncoderH264.h"
 
 #include "api/cast_tuning/cast_tuning_config.h"
@@ -314,8 +313,13 @@ class ObjCVideoSourceAdapter final
                               configuration:
                                   (RTCCastTuningConfiguration *)configuration
                                       error:(NSError **)error {
-  id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)> base = encoderFactory ?:
-      [[RTC_OBJC_TYPE(RTCDefaultVideoEncoderFactory) alloc] init];
+  if (!encoderFactory) {
+    if (error)
+      *error = CastError(
+          @"CastTuning requires an explicit hardware-capable encoder factory");
+    return nil;
+  }
+  id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)> base = encoderFactory;
   id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)> tuned =
       [[RTCCastTuningVideoEncoderFactory alloc]
           initWithBase:base

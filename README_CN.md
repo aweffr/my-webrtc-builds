@@ -40,6 +40,10 @@ macOS framework 提供 `RTCCastTuningConfiguration`、
 `RTCCastTuningFactoryBuilder`、`RTCCastTuningController`。Android 提供
 `CastTuningConfig`、`CastTuningAndroidConfig`、`CastTuningController`：
 
+macOS factory builder 必须显式传入支持硬件加速的
+`RTCVideoEncoderFactory`（例如 VideoToolbox H264 factory），不会隐式引入
+WebRTC software codec factory。
+
 ```java
 CastTuningConfig config = CastTuningAndroidConfig.fromIntent(baseJson, intent);
 try (CastTuningController tuning = new CastTuningController(config)) {
