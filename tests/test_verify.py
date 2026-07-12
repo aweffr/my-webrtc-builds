@@ -95,7 +95,15 @@ class FakeRunner:
         self.commands.append(command)
         normalized = command[0].replace("\\", "/")
         basename = normalized.rsplit("/", maxsplit=1)[-1]
-        return self.responses.get(command[0], self.responses.get(basename, ""))
+        normalized_responses = {
+            key.replace("\\", "/"): value for key, value in self.responses.items()
+        }
+        return self.responses.get(
+            command[0],
+            normalized_responses.get(
+                normalized, normalized_responses.get(basename, "")
+            ),
+        )
 
 
 class BinaryVerificationTests(unittest.TestCase):
