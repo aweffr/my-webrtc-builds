@@ -8,7 +8,7 @@ WebRTC CastKit 是面向低延迟办公投屏的 WebRTC 运行时与可复现构
 
 ## 项目提供什么
 
-- 固定版本的 M150 构建产物：Android arm64、iOS device/simulator arm64、macOS x64/arm64 静态库；macOS 同时提供 framework/XCFramework。
+- 固定版本的 M150 构建产物：Android arm64、iOS device/simulator arm64、macOS x64/arm64 静态库和 Windows x64 静态库；macOS 同时提供 framework/XCFramework。
 - Android/macOS 的 CastTuning schema `1`：typed API、JSON 配置、macOS 环境变量、Android Intent override、live patch 与 snapshot。
 - 内置 `UPSTREAM`、`DETAIL_IDLE`、`DETAIL_ACTIVE`、`MOTION`、`RECOVERY` 五个 profile。
 - per-factory Field Trials、sender/receiver 调参、VideoToolbox 与 Android MediaCodec 低延迟 hook，以及 NACK/RTX/FEC advertisement 控制。
@@ -79,6 +79,7 @@ live patch 会整体预校验。setter 失败时，CastTuning 会回滚旧值；
 | iOS | `webrtc-m150-ios.tar.gz` | 分离的 device/simulator arm64 静态库和 headers |
 | macOS x64 | `webrtc-m150-macos-x64.tar.gz` | x64 静态库、headers、thin `WebRTC.framework`、CastTuning ObjC API |
 | macOS arm64 | `webrtc-m150-macos-arm64.tar.gz` | arm64 静态库、headers、thin `WebRTC.framework`、CastTuning ObjC API |
+| Windows x64 | `webrtc-m150-windows-x64.zip` | x64 `webrtc.lib`、C++ headers、CastTuning common C++ API、`/MT` Release ABI |
 | macOS universal | `WebRTC-m150-macos-universal.xcframework.zip` | universal `WebRTC.xcframework` |
 
 静态包都包含 resolved GN arguments、metadata schema `2`、patch/overlay hash、上游 license/notice 和 `SHA256SUMS`。
@@ -93,6 +94,7 @@ GitHub Actions 的触发、XCFramework 合并、release 发布、本地验证及
 
 - macOS 静态库包含 OpenH264 encoder 与 FFmpeg H.264 decoder。
 - Apple framework 使用 VideoToolbox H.264/H.265；Android 通过 WebRTC Java/JNI 使用 MediaCodec H.264/H.265。
+- Windows 包含 software H.264 encoder/decoder 路径；H.265 仅支持 parser/协商层。Windows 静态库采用固定 M150 的 `/MT` CRT contract，不提供 Windows 专属 CastTuning wrapper。
 - 项目编译 codec capability，但不修改 upstream runtime codec-factory selection，也不提供 H.265 software fallback。
 
 发行方负责满足 H.264/H.265 的产品与专利许可要求。项目自研代码采用 Apache-2.0；patch 来源见 [`patches/m150/SOURCES.md`](patches/m150/SOURCES.md)。

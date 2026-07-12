@@ -8,7 +8,7 @@ maintainers who build, compose, release, or diagnose the binary artifacts.
 - `gh auth status` succeeds for `aweffr/my-webrtc-builds`.
 - Build workflows are manually dispatched only. They do not run on push,
   pull request, or schedule.
-- Use the same repository commit for the four platform builds.
+- Use the same repository commit for the five platform builds.
 
 ## Build platform artifacts
 
@@ -20,6 +20,7 @@ gh workflow run build-android.yml -R aweffr/my-webrtc-builds --ref main
 gh workflow run build-ios.yml -R aweffr/my-webrtc-builds --ref main
 gh workflow run build-macos-x64.yml -R aweffr/my-webrtc-builds --ref main
 gh workflow run build-macos-arm64.yml -R aweffr/my-webrtc-builds --ref main
+gh workflow run build-windows-x64.yml -R aweffr/my-webrtc-builds --ref main
 ```
 
 List and inspect runs:
@@ -58,6 +59,7 @@ gh workflow run publish-release.yml \
   -f ios_run_id=IOS_RUN_ID \
   -f macos_x64_run_id=MACOS_X64_RUN_ID \
   -f macos_arm64_run_id=MACOS_ARM64_RUN_ID \
+  -f windows_x64_run_id=WINDOWS_X64_RUN_ID \
   -f xcframework_run_id=XCFRAMEWORK_RUN_ID
 ```
 
@@ -99,6 +101,10 @@ it with:
 gh run download RUN_ID \
   -R aweffr/my-webrtc-builds \
   -n webrtc-m150-macos-arm64-diagnostics
+
+gh run download WINDOWS_RUN_ID \
+  -R aweffr/my-webrtc-builds \
+  -n webrtc-m150-windows-x64-diagnostics
 ```
 
 Inspect these files first:

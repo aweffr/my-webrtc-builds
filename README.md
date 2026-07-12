@@ -13,8 +13,9 @@ one-size-fits-all media preset.
 
 ## What it provides
 
-- Pinned WebRTC M150 artifacts: Android arm64, iOS device/simulator arm64, and
-  macOS x64/arm64 static libraries; macOS also ships a framework/XCFramework.
+- Pinned WebRTC M150 artifacts: Android arm64, iOS device/simulator arm64,
+  macOS x64/arm64 static libraries, and a Windows x64 static library; macOS
+  also ships a framework/XCFramework.
 - CastTuning schema `1` on Android and macOS: typed APIs, JSON configuration,
   macOS environment overrides, Android Intent overrides, live patches, and
   snapshots.
@@ -97,6 +98,7 @@ The full design and boundaries are in
 | iOS | `webrtc-m150-ios.tar.gz` | separate device and simulator arm64 static libraries and headers |
 | macOS x64 | `webrtc-m150-macos-x64.tar.gz` | x64 static library, headers, thin `WebRTC.framework`, CastTuning ObjC API |
 | macOS arm64 | `webrtc-m150-macos-arm64.tar.gz` | arm64 static library, headers, thin `WebRTC.framework`, CastTuning ObjC API |
+| Windows x64 | `webrtc-m150-windows-x64.zip` | x64 `webrtc.lib`, C++ headers, CastTuning common C++ API, `/MT` Release ABI |
 | macOS universal | `WebRTC-m150-macos-universal.xcframework.zip` | universal `WebRTC.xcframework` |
 
 Static packages contain resolved GN arguments, metadata schema `2`, patch and
@@ -117,6 +119,9 @@ source identity, toolchain/disk state, and a full output inventory.
 - macOS static libraries bundle the OpenH264 encoder and FFmpeg H.264 decoder.
 - Apple frameworks use VideoToolbox H.264/H.265; Android uses MediaCodec
   H.264/H.265 through WebRTC Java/JNI APIs.
+- Windows bundles the software H.264 encoder/decoder path; its H.265 support is
+  limited to the parser/negotiation layer. The Windows static library uses the
+  pinned M150 `/MT` CRT contract and has no Windows-specific CastTuning wrapper.
 - The project compiles codec capabilities but does not alter upstream runtime
   codec-factory selection or add an H.265 software fallback.
 
