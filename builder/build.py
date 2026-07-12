@@ -36,6 +36,10 @@ def _archiver(target: TargetConfig, workspace: Workspace) -> Path:
     return workspace.src / "third_party/llvm-build/Release+Asserts/bin/llvm-ar"
 
 
+def _production_library(target: TargetConfig, unit: BuildUnit) -> Path:
+    return unit.output_dir / ("webrtc.lib" if target.name == "windows-x64" else "libwebrtc.a")
+
+
 def _archive_objects(
     target: TargetConfig,
     workspace: Workspace,
@@ -69,7 +73,7 @@ def build_webrtc(
     runner: Runner,
     journal: Any | None = None,
 ) -> tuple[BuildUnit, ...]:
-    environment = workspace.environment()
+    environment = workspace.environment(target)
     units = build_units(target, workspace)
     for unit in units:
         unit.output_dir.mkdir(parents=True, exist_ok=True)
@@ -81,12 +85,12 @@ def build_webrtc(
         )
         with phase:
             runner.run(
-                ["gn", "gen", unit.output_dir, f"--args={args_string}"],
+                [workspace.tool("gn", target), "gen", unit.output_dir, f"--args={args_string}"],
                 cwd=workspace.src,
                 env=environment,
             )
         resolved_args = runner.capture(
-            ["gn", "args", "--list", unit.output_dir],
+            [workspace.tool("gn", target), "args", "--list", unit.output_dir],
             cwd=workspace.src,
             env=environment,
         )
@@ -98,7 +102,7 @@ def build_webrtc(
         )
         with phase:
             runner.run(
-                ["ninja", "-C", unit.output_dir, *target.ninja_targets],
+                [workspace.tool("ninja", target), "-C", unit.output_dir, *target.ninja_targets],
                 cwd=workspace.src,
                 env=environment,
             )
@@ -108,7 +112,13 @@ def build_webrtc(
             else nullcontext()
         )
         with phase:
-            _archive_objects(target, workspace, unit, runner)
+            if target.name == "windows-x64":
+                source = unit.output_dir / "obj" / "webrtc.lib"
+                if not source.is_file():
+                    raise BuildError(f"complete static library is missing: {source}")
+                source.replace(_production_library(target, unit))
+            else:
+                _archive_objects(target, workspace, unit, runner)
         if target.validation_targets:
             phase = (
                 journal.phase(
@@ -121,11 +131,19 @@ def build_webrtc(
             )
             with phase:
                 runner.run(
-                    ["ninja", "-C", unit.output_dir, *target.validation_targets],
+                    [
+                        workspace.tool("ninja", target),
+                        "-C",
+                        unit.output_dir,
+                        *target.validation_targets,
+                    ],
                     cwd=workspace.src,
                     env=environment,
                 )
-            if target.name.startswith("macos"):
+            if target.name.startswith("macos") or target.name == "windows-x64":
+                executable = unit.output_dir / "cast_tuning_native_tests"
+                if target.name == "windows-x64":
+                    executable = executable.with_suffix(".exe")
                 phase = (
                     journal.phase(
                         "cast-tuning-validation-run",
@@ -136,5 +154,5 @@ def build_webrtc(
                     else nullcontext()
                 )
                 with phase:
-                    runner.run([unit.output_dir / "cast_tuning_native_tests"])
+                    runner.run([executable], cwd=unit.output_dir, env=environment)
     return units

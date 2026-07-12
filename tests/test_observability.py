@@ -59,6 +59,11 @@ class ToolchainObservationTests(unittest.TestCase):
         self.assertIn(("javac", "-version"), android_runner.commands)
         self.assertNotIn("xcode", android)
 
+        windows_runner = VersionRunner()
+        windows = collect_toolchain("windows-x64", windows_runner)
+        self.assertIn("visual_studio", windows)
+        self.assertIn("windows", windows)
+
 
 if __name__ == "__main__":
     unittest.main()

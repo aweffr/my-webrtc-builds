@@ -87,6 +87,18 @@ class TargetConfig:
                 "rtc_use_h264=false",
                 "rtc_use_h265=true",
             )
+        elif self.name == "windows-x64":
+            platform_args = (
+                'target_os="win"',
+                'target_cpu="x64"',
+                "use_custom_libcxx=false",
+                "use_custom_libcxx_for_host=false",
+                "proprietary_codecs=true",
+                "rtc_use_h264=true",
+                "rtc_system_openh264=false",
+                'ffmpeg_branding="Chrome"',
+                "rtc_use_h265=true",
+            )
         else:
             cpu = architecture
             platform_args = (
@@ -183,6 +195,21 @@ TARGETS: Mapping[str, TargetConfig] = MappingProxyType(
             ),
             overlays=("common", "macos"),
             ninja_targets=_APPLE_TARGETS + ("sdk:mac_framework_objc",),
+            validation_targets=("api/cast_tuning:cast_tuning_native_tests",),
+        ),
+        "windows-x64": TargetConfig(
+            name="windows-x64",
+            runner="windows-2022",
+            architectures=("x64",),
+            deployment_target=None,
+            patches=(
+                "windows_add_deps.patch",
+                "h265.patch",
+                "codec_licenses.patch",
+                "cast_tuning_hooks.patch",
+            ),
+            overlays=("common",),
+            ninja_targets=(":default",),
             validation_targets=("api/cast_tuning:cast_tuning_native_tests",),
         ),
     }

@@ -1,0 +1,13 @@
+diff --git a/BUILD.gn b/BUILD.gn
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@
+       "pc:rtc_pc",
+       "video",
++      "modules/audio_device:audio_device_module_from_input_and_output",
++      "//third_party/zlib",
++      "rtc_base:log_sinks",
++      "rtc_base:socket_adapters",
++      "media:rtc_simulcast_encoder_adapter",
++      "api:enable_media_with_defaults",
+     ]

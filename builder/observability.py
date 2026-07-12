@@ -24,6 +24,22 @@ def collect_toolchain(target: str, runner: Any) -> dict[str, str]:
         )
     if target == "android":
         commands["java"] = ["javac", "-version"]
+    if target == "windows-x64":
+        commands.update(
+            {
+                "windows": ["cmd", "/d", "/c", "ver"],
+                "visual_studio": [
+                    "vswhere",
+                    "-latest",
+                    "-products",
+                    "*",
+                    "-requires",
+                    "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                    "-property",
+                    "installationVersion",
+                ],
+            }
+        )
     return {
         name: " | ".join(runner.capture(command).splitlines()) for name, command in commands.items()
     }

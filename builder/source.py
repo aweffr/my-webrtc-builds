@@ -47,11 +47,23 @@ class Workspace:
     def stage(self) -> Path:
         return self.root / "stage"
 
-    def environment(self) -> dict[str, str]:
+    def environment(self, target: TargetConfig | None = None) -> dict[str, str]:
         environment = dict(os.environ)
-        environment["PATH"] = f"{self.depot_tools}{os.pathsep}{environment.get('PATH', '')}"
+        is_windows = target is not None and target.name == "windows-x64"
+        separator = ";" if is_windows else os.pathsep
+        environment["PATH"] = f"{self.depot_tools}{separator}{environment.get('PATH', '')}"
         environment["DEPOT_TOOLS_UPDATE"] = "0"
+        if is_windows:
+            environment["DEPOT_TOOLS_WIN_TOOLCHAIN"] = "0"
+            environment["GIT_CONFIG_COUNT"] = "1"
+            environment["GIT_CONFIG_KEY_0"] = "core.longpaths"
+            environment["GIT_CONFIG_VALUE_0"] = "true"
         return environment
+
+    def tool(self, name: str, target: TargetConfig | None = None) -> Path | str:
+        if target is not None and target.name == "windows-x64":
+            return self.depot_tools / f"{name}.bat"
+        return name
 
 
 def _sha256(path: Path) -> str:
@@ -120,7 +132,7 @@ def prepare_source(
     overlay_dir: Path | None = None,
 ) -> None:
     workspace.root.mkdir(parents=True, exist_ok=True)
-    environment = workspace.environment()
+    environment = workspace.environment(target)
     if not workspace.depot_tools.exists():
         workspace.depot_tools.mkdir(parents=True)
         runner.run(["git", "init"], cwd=workspace.depot_tools)
@@ -150,7 +162,9 @@ def prepare_source(
             f"unexpected depot_tools commit {actual_depot_tools_commit!r}; "
             f"expected {DEPOT_TOOLS_COMMIT}"
         )
-    if not (workspace.depot_tools / "python3_bin_reldir.txt").is_file():
+    if target.name != "windows-x64" and not (
+        workspace.depot_tools / "python3_bin_reldir.txt"
+    ).is_file():
         runner.run(
             [
                 "bash",
@@ -164,7 +178,7 @@ def prepare_source(
     if not workspace.src.exists():
         workspace.checkout_root.mkdir(parents=True, exist_ok=True)
         runner.run(
-            ["fetch", "--nohooks", "--no-history", "webrtc"],
+            [workspace.tool("fetch", target), "--nohooks", "--no-history", "webrtc"],
             cwd=workspace.checkout_root,
             env=environment,
         )
@@ -183,7 +197,14 @@ def prepare_source(
     )
     runner.run(["git", "clean", "-df"], cwd=workspace.src, env=environment)
     runner.run(
-        ["gclient", "sync", "-D", "--force", "--reset", "--no-history"],
+        [
+            workspace.tool("gclient", target),
+            "sync",
+            "-D",
+            "--force",
+            "--reset",
+            "--no-history",
+        ],
         cwd=workspace.src,
         env=environment,
     )

@@ -19,7 +19,7 @@ class TargetConfigTests(unittest.TestCase):
     def test_exact_supported_target_set(self) -> None:
         self.assertEqual(
             set(TARGETS),
-            {"android", "ios", "macos-x64", "macos-arm64"},
+            {"android", "ios", "macos-x64", "macos-arm64", "windows-x64"},
         )
 
     def test_platform_runner_and_architecture_contract(self) -> None:
@@ -41,7 +41,11 @@ class TargetConfigTests(unittest.TestCase):
         self.assertEqual(mac_arm64.runner, "macos-26")
         self.assertEqual(mac_arm64.architectures, ("arm64",))
 
-    def test_cast_tuning_is_overlaid_only_for_macos_and_android(self) -> None:
+        windows = get_target("windows-x64")
+        self.assertEqual(windows.runner, "windows-2022")
+        self.assertEqual(windows.architectures, ("x64",))
+
+    def test_cast_tuning_is_overlaid_for_windows_macos_and_android(self) -> None:
         android = get_target("android")
         self.assertEqual(android.overlays, ("common", "android"))
         self.assertEqual(android.patches[-1], "cast_tuning_hooks.patch")
@@ -59,18 +63,27 @@ class TargetConfigTests(unittest.TestCase):
                 ("api/cast_tuning:cast_tuning_native_tests",),
             )
 
+        windows = get_target("windows-x64")
+        self.assertEqual(windows.overlays, ("common",))
+        self.assertEqual(windows.patches[-1], "cast_tuning_hooks.patch")
+        self.assertEqual(
+            windows.validation_targets,
+            ("api/cast_tuning:cast_tuning_native_tests",),
+        )
+
         self.assertEqual(get_target("ios").overlays, ())
         self.assertEqual(get_target("ios").validation_targets, ())
         self.assertNotIn("cast_tuning_hooks.patch", get_target("ios").patches)
 
     def test_macos_bundles_software_h264_while_mobile_does_not(self) -> None:
-        for name in ("macos-x64", "macos-arm64"):
+        for name in ("macos-x64", "macos-arm64", "windows-x64"):
             args = get_target(name).gn_args_for(get_target(name).architectures[0])
             self.assertIn("rtc_use_h264=true", args)
             self.assertIn("rtc_system_openh264=false", args)
             self.assertIn('ffmpeg_branding="Chrome"', args)
             self.assertIn("rtc_use_h265=true", args)
-            self.assertIn("rtc_enable_objc_symbol_export=true", args)
+            if name.startswith("macos"):
+                self.assertIn("rtc_enable_objc_symbol_export=true", args)
 
         for name in ("android", "ios"):
             args = get_target(name).gn_args_for(get_target(name).architectures[0])
@@ -84,6 +97,12 @@ class TargetConfigTests(unittest.TestCase):
         self.assertIn("macos_h265_framework.patch", get_target("macos-arm64").patches)
         self.assertNotIn("codec_licenses.patch", get_target("android").patches)
         self.assertNotIn("codec_licenses.patch", get_target("ios").patches)
+
+    def test_windows_uses_windows_dependency_patch_and_root_library(self) -> None:
+        target = get_target("windows-x64")
+        self.assertIn("windows_add_deps.patch", target.patches)
+        self.assertNotIn("add_deps.patch", target.patches)
+        self.assertEqual(target.ninja_targets, (":default",))
 
     def test_unknown_target_is_rejected(self) -> None:
         with self.assertRaisesRegex(UnknownTargetError, "unsupported target"):

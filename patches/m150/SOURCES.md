@@ -25,6 +25,7 @@ umbrella header.
 | File | SHA-256 |
 | --- | --- |
 | `add_deps.patch` | `835b09d756f9dc3cbf2286476d654b08c82fbcc141a40f15ecf6145d789d272b` |
+| `windows_add_deps.patch` | `6f8ed39bb6e15823a098273992f3208e68ebeceef9b0c87fde9562c9298a6efc` |
 | `h265.patch` | `5c1e1d169e59050722b5e329a47bbea889f8194e099b175703fda32c1b36b2e7` |
 | `h265_android.patch` | `9598c581d937fc9e15c34eafa6d42f707e40df65999453cdd8e7659d29eb7d8e` |
 | `h265_ios.patch` | `13cb55f38774a6312ca0b965779f8c48e581d23ae31680e813f7418966c5482a` |

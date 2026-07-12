@@ -53,6 +53,19 @@ class SourcePreparationTests(unittest.TestCase):
             environment = Workspace(Path(directory)).environment()
         self.assertEqual(environment.get("DEPOT_TOOLS_UPDATE"), "0")
 
+    def test_windows_environment_uses_bat_tools_and_long_paths_without_bash_bootstrap(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            target = get_target("windows-x64")
+            environment = workspace.environment(target)
+            tool = workspace.tool("fetch", target)
+        self.assertTrue(str(tool).endswith("fetch.bat"))
+        self.assertIn("DEPOT_TOOLS_WIN_TOOLCHAIN", environment)
+        self.assertEqual(environment["DEPOT_TOOLS_WIN_TOOLCHAIN"], "0")
+        self.assertEqual(environment["GIT_CONFIG_KEY_0"], "core.longpaths")
+        self.assertEqual(environment["GIT_CONFIG_VALUE_0"], "true")
+        self.assertIn(";", environment["PATH"])
+
     def test_overlay_manifest_is_deterministic_and_apply_rejects_collisions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -143,6 +156,39 @@ class SourcePreparationTests(unittest.TestCase):
 
 
 class BuildPlanTests(unittest.TestCase):
+    def test_windows_copies_complete_static_library_and_runs_validation_exe(self) -> None:
+        class WindowsRunner(FakeRunner):
+            def run(self, argv, *, cwd=None, env=None) -> None:
+                self.calls.append(("run", tuple(map(str, argv)), cwd))
+                if argv and str(argv[0]).endswith("ninja.bat"):
+                    output_dir = Path(argv[2])
+                    (output_dir / "obj").mkdir(parents=True, exist_ok=True)
+                    (output_dir / "obj" / "webrtc.lib").write_bytes(b"complete archive")
+
+            def capture(self, argv, *, cwd=None, env=None) -> str:
+                self.calls.append(("capture", tuple(map(str, argv)), cwd))
+                if argv and str(argv[0]).endswith("gn.bat") and tuple(argv[1:3]) == (
+                    "args",
+                    "--list",
+                ):
+                    return "target_os = \"win\""
+                return super().capture(argv, cwd=cwd, env=env)
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            workspace.src.mkdir(parents=True)
+            runner = WindowsRunner()
+            units = build_webrtc(get_target("windows-x64"), workspace, runner)
+
+            unit = units[0]
+            self.assertEqual((unit.output_dir / "webrtc.lib").read_bytes(), b"complete archive")
+            commands = [call[1] for call in runner.calls]
+            self.assertTrue(any(command[0].endswith("ninja.bat") for command in commands))
+            self.assertIn(
+                (str(unit.output_dir / "cast_tuning_native_tests.exe"),),
+                commands,
+            )
+
     def test_archive_uses_one_response_file_for_duplicate_object_basenames(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             workspace = Workspace(Path(directory))
