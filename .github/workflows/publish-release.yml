@@ -23,11 +23,6 @@ on:
         description: Successful Package macOS XCFramework run ID
         required: true
         type: string
-      revision:
-        description: Positive my-webrtc-builds release revision
-        required: true
-        default: 1
-        type: number
 
 permissions:
   actions: read
@@ -110,8 +105,8 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p "$RELEASE_DIR" "$DIAGNOSTICS_DIR"
+          RELEASE_DATE="$(date -u +%Y%m%d)"
           python3 -u -m builder release-manifest \
-            --revision "${{ inputs.revision }}" \
             --android-package inputs/android/webrtc-m150-android-arm64-v8a.tar.gz \
             --ios-package inputs/ios/webrtc-m150-ios.tar.gz \
             --macos-x64-package inputs/macos-x64/webrtc-m150-macos-x64.tar.gz \
@@ -120,6 +115,8 @@ jobs:
             --xcframework-metadata inputs/xcframework/xcframework-metadata.json \
             --output-dir "$RELEASE_DIR" \
             --builder-commit "$GITHUB_SHA" \
+            --release-date "$RELEASE_DATE" \
+            --platform all \
             2>&1 | tee "$DIAGNOSTICS_DIR/release-validation.log"
           TAG="$(jq -r .tag "$RELEASE_DIR/release-manifest.json")"
           BUILDER_COMMIT="$(jq -r .builder_commit "$RELEASE_DIR/release-manifest.json")"
@@ -145,7 +142,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "${{ steps.manifest.outputs.builder_commit }}" \
             --draft \
-            --title "WebRTC M150 build r${{ inputs.revision }}" \
+            --title "$TAG" \
             --notes "Pinned WebRTC branch-heads/7871@{#3}, commit 1f975dfd761af6e5d76d28333191973b258d82a8." \
             inputs/android/webrtc-m150-android-arm64-v8a.tar.gz \
             inputs/ios/webrtc-m150-ios.tar.gz \

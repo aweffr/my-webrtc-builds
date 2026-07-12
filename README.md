@@ -63,13 +63,13 @@ gh workflow run publish-release.yml \
   -f ios_run_id=IOS_RUN_ID \
   -f macos_x64_run_id=MACOS_X64_RUN_ID \
   -f macos_arm64_run_id=MACOS_ARM64_RUN_ID \
-  -f xcframework_run_id=XCFRAMEWORK_RUN_ID \
-  -f revision=1
+  -f xcframework_run_id=XCFRAMEWORK_RUN_ID
 ```
 
 The release workflow rejects artifacts built from different repository
 commits, mismatched WebRTC sources, invalid target metadata, and existing tags.
-Release tags use `m150.7871.3-rN`.
+The combined multi-platform release tag uses
+`webrtc-m150.7871.3-<builder-short-sha>-YYYYMMDD-all`.
 
 ## Codec behavior
 
@@ -139,4 +139,3 @@ The build design is intentionally small and was informed by:
 The repository's own code is Apache-2.0. Vendored patch provenance and hashes
 are recorded in [`patches/m150/SOURCES.md`](patches/m150/SOURCES.md). Binary
 packages preserve WebRTC and third-party notices.
-

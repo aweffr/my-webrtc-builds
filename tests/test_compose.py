@@ -162,15 +162,16 @@ class ReleaseManifestTests(unittest.TestCase):
                 )
             )
             manifest = create_release_manifest(
-                revision=1,
                 packages=packages,
                 xcframework=xcframework,
                 xcframework_metadata=xc_metadata,
                 output_dir=root / "release",
                 builder_commit="a" * 40,
+                release_date="20260712",
+                platform="all",
             )
             payload = json.loads(manifest.read_text())
-        self.assertEqual(payload["tag"], "m150.7871.3-r1")
+        self.assertEqual(payload["tag"], "webrtc-m150.7871.3-aaaaaaa-20260712-all")
         self.assertEqual(len(payload["assets"]), 5)
 
     def test_release_rejects_workflow_commit_different_from_inputs(self) -> None:
@@ -196,12 +197,13 @@ class ReleaseManifestTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(CompositionError, "workflow builder commit"):
                 create_release_manifest(
-                    revision=1,
                     packages=packages,
                     xcframework=xcframework,
                     xcframework_metadata=xc_metadata,
                     output_dir=root / "release",
                     builder_commit="b" * 40,
+                    release_date="20260712",
+                    platform="all",
                 )
 
     def test_release_rejects_missing_platform(self) -> None:
@@ -214,12 +216,13 @@ class ReleaseManifestTests(unittest.TestCase):
             xc_metadata.write_text("{}")
             with self.assertRaisesRegex(CompositionError, "exact platform set"):
                 create_release_manifest(
-                    revision=1,
                     packages=packages,
                     xcframework=xcframework,
                     xcframework_metadata=xc_metadata,
                     output_dir=root / "release",
                     builder_commit="a" * 40,
+                    release_date="20260712",
+                    platform="all",
                 )
 
 

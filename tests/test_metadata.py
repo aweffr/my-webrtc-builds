@@ -98,15 +98,21 @@ class MetadataTests(unittest.TestCase):
 
 
 class ReleaseTagTests(unittest.TestCase):
-    def test_positive_revision_builds_fixed_release_tag(self) -> None:
-        self.assertEqual(release_tag(1), "m150.7871.3-r1")
-        self.assertEqual(release_tag(7), "m150.7871.3-r7")
+    def test_release_tag_includes_version_short_commit_date_and_platform(self) -> None:
+        self.assertEqual(
+            release_tag("0565ce035a0ace92163200355d6ed75c7eec14a2", "20260712", "all"),
+            "webrtc-m150.7871.3-0565ce0-20260712-all",
+        )
 
-    def test_non_positive_revision_is_rejected(self) -> None:
-        for revision in (0, -1):
-            with self.subTest(revision=revision):
-                with self.assertRaisesRegex(ValueError, "positive"):
-                    release_tag(revision)
+    def test_invalid_release_tag_fields_are_rejected(self) -> None:
+        for builder_commit, date, platform in (
+            ("short", "20260712", "all"),
+            ("a" * 40, "20261312", "all"),
+            ("a" * 40, "20260712", "macos arm64"),
+        ):
+            with self.subTest(builder_commit=builder_commit, date=date, platform=platform):
+                with self.assertRaises(ValueError):
+                    release_tag(builder_commit, date, platform)
 
 
 if __name__ == "__main__":

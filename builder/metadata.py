@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -168,7 +170,13 @@ def validate_compatible(
             raise MetadataError("packages use different header manifests")
 
 
-def release_tag(revision: int) -> str:
-    if revision <= 0:
-        raise ValueError("release revision must be positive")
-    return f"{SOURCE_VERSION.release_base}-r{revision}"
+def release_tag(builder_commit: str, release_date: str, platform: str) -> str:
+    if not re.fullmatch(r"[0-9a-f]{40}", builder_commit):
+        raise ValueError("builder commit must be a 40-character lowercase SHA")
+    try:
+        datetime.strptime(release_date, "%Y%m%d")
+    except ValueError as exc:
+        raise ValueError("release date must be a valid YYYYMMDD value") from exc
+    if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", platform):
+        raise ValueError("release platform must contain lowercase letters, digits, and hyphens")
+    return f"webrtc-{SOURCE_VERSION.release_base}-{builder_commit[:7]}-{release_date}-{platform}"

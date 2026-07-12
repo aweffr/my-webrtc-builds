@@ -189,12 +189,13 @@ def _load_xcframework_metadata(path: Path) -> dict[str, object]:
 
 def create_release_manifest(
     *,
-    revision: int,
     packages: Mapping[str, Path],
     xcframework: Path,
     xcframework_metadata: Path,
     output_dir: Path,
     builder_commit: str,
+    release_date: str,
+    platform: str,
 ) -> Path:
     expected_targets = {"android", "ios", "macos-x64", "macos-arm64"}
     if set(packages) != expected_targets:
@@ -250,9 +251,11 @@ def create_release_manifest(
     assets = [*packages.values(), xcframework]
     payload = {
         "schema_version": 1,
-        "tag": release_tag(revision),
+        "tag": release_tag(builder_commit, release_date, platform),
         "source": dict(reference.source),
         "builder_commit": reference.builder_commit,
+        "release_date": release_date,
+        "platform": platform,
         "assets": [
             {"name": path.name, "sha256": _sha256(path), "size": path.stat().st_size}
             for path in sorted(assets, key=lambda item: item.name)

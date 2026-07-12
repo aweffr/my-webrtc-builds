@@ -67,7 +67,7 @@ Build workflows upload compressed packages as 30-day Actions artifacts. Compress
 
 The XCFramework workflow accepts explicit x64 and arm64 run IDs. It rejects mismatched WebRTC commits, builder commits, configuration fingerprints, or header manifests. It creates a universal framework binary with `lipo`, then wraps that framework with `xcodebuild -create-xcframework`.
 
-The release workflow accepts the four build run IDs, the XCFramework run ID, and a release revision. It rejects mixed builder commits and existing release tags. The tag format is `m150.7871.3-rN`.
+The release workflow accepts the four build run IDs and the XCFramework run ID. It rejects mixed builder commits and existing release tags. The combined-release tag format is `webrtc-m150.7871.3-<builder-short-sha>-YYYYMMDD-all`.
 
 ## Package contract
 
@@ -87,7 +87,7 @@ The builder fails immediately when source identity, patch applicability, expecte
 
 Unit tests protect target configuration, metadata construction and validation, archive path safety, cross-run compatibility, and release-tag rules. Each actual build additionally verifies archive members, CPU architecture, framework plist/symlinks/headers, Java contents, codec symbols, checksums, and package structure.
 
-The initial delivery is complete only after all four hosted-runner builds succeed, the universal XCFramework is produced, and GitHub Release `m150.7871.3-r1` is published and downloaded for checksum verification.
+The initial delivery is complete only after all four hosted-runner builds succeed, the universal XCFramework is produced, and the corresponding GitHub Release is published and downloaded for checksum verification.
 
 ## Observability
 

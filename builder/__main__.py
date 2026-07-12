@@ -33,13 +33,14 @@ def _parser() -> argparse.ArgumentParser:
     merge.add_argument("--builder-commit", required=True)
 
     release = subparsers.add_parser("release-manifest", help="validate and compose release data")
-    release.add_argument("--revision", required=True, type=int)
     for target in ("android", "ios", "macos-x64", "macos-arm64"):
         release.add_argument(f"--{target}-package", required=True, type=Path)
     release.add_argument("--xcframework", required=True, type=Path)
     release.add_argument("--xcframework-metadata", required=True, type=Path)
     release.add_argument("--output-dir", required=True, type=Path)
     release.add_argument("--builder-commit", required=True)
+    release.add_argument("--release-date", required=True)
+    release.add_argument("--platform", required=True)
     return parser
 
 
@@ -97,7 +98,6 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "release-manifest":
         manifest = create_release_manifest(
-            revision=args.revision,
             packages={
                 "android": args.android_package.resolve(),
                 "ios": args.ios_package.resolve(),
@@ -108,6 +108,8 @@ def main(argv: list[str] | None = None) -> int:
             xcframework_metadata=args.xcframework_metadata.resolve(),
             output_dir=args.output_dir.resolve(),
             builder_commit=args.builder_commit,
+            release_date=args.release_date,
+            platform=args.platform,
         )
         print(manifest)
         return 0
