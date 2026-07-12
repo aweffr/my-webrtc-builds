@@ -103,8 +103,14 @@ class MacOSInputTests(unittest.TestCase):
                 runner=runner,
             )
             commands = runner.commands
-            lipo_index = next(i for i, command in enumerate(commands) if command[0] == "lipo" and "-create" in command)
-            xcode_index = next(i for i, command in enumerate(commands) if command[0] == "xcodebuild")
+            lipo_index = next(
+                i
+                for i, command in enumerate(commands)
+                if command[0] == "lipo" and "-create" in command
+            )
+            xcode_index = next(
+                i for i, command in enumerate(commands) if command[0] == "xcodebuild"
+            )
             self.assertLess(lipo_index, xcode_index)
             self.assertTrue(archive.is_file())
             self.assertEqual(json.loads(metadata.read_text())["target"], "macos-universal")

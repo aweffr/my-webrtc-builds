@@ -54,11 +54,7 @@ def package_filename(target: str) -> str:
 
 def write_checksums(root: Path) -> Path:
     output = root / "SHA256SUMS"
-    files = sorted(
-        path
-        for path in root.rglob("*")
-        if path.is_file() and path != output
-    )
+    files = sorted(path for path in root.rglob("*") if path.is_file() and path != output)
     lines = [f"{_sha256(path)}  {path.relative_to(root).as_posix()}" for path in files]
     output.write_text("\n".join(lines) + "\n")
     return output
@@ -77,7 +73,9 @@ def _validate_member(member: tarfile.TarInfo) -> None:
     if member.issym() or member.islnk():
         if PurePosixPath(member.linkname).is_absolute():
             raise PackageError(f"unsafe archive link: {member.name} -> {member.linkname}")
-        resolved = posixpath.normpath(posixpath.join(posixpath.dirname(member.name), member.linkname))
+        resolved = posixpath.normpath(
+            posixpath.join(posixpath.dirname(member.name), member.linkname)
+        )
         if resolved == ".." or resolved.startswith("../"):
             raise PackageError(f"unsafe archive link: {member.name} -> {member.linkname}")
 

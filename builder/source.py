@@ -106,9 +106,7 @@ def prepare_source(
         cwd=workspace.src,
         env=environment,
     )
-    actual_commit = runner.capture(
-        ["git", "rev-parse", "HEAD"], cwd=workspace.src, env=environment
-    )
+    actual_commit = runner.capture(["git", "rev-parse", "HEAD"], cwd=workspace.src, env=environment)
     if actual_commit != SOURCE_VERSION.commit:
         raise BuildError(
             f"unexpected WebRTC commit {actual_commit!r}; expected {SOURCE_VERSION.commit}"
@@ -124,4 +122,3 @@ def prepare_source(
             env=environment,
         )
         runner.run(["git", "apply", patch_path], cwd=workspace.src, env=environment)
-

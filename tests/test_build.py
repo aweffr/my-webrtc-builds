@@ -47,7 +47,9 @@ class SourcePreparationTests(unittest.TestCase):
             commands = [call[1] for call in runner.calls]
             checkout = ("git", "checkout", "--detach", SOURCE_VERSION.commit)
             self.assertIn(checkout, commands)
-            sync_index = next(i for i, command in enumerate(commands) if command[:2] == ("gclient", "sync"))
+            sync_index = next(
+                i for i, command in enumerate(commands) if command[:2] == ("gclient", "sync")
+            )
             for patch_name in get_target("android").patches:
                 patch_path = str(patch_dir / patch_name)
                 check_index = commands.index(("git", "apply", "--check", patch_path))

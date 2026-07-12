@@ -68,4 +68,6 @@ class CommandRunner:
         except subprocess.CalledProcessError as exc:
             detail = (exc.stderr or exc.stdout or "").strip()
             suffix = f": {detail}" if detail else ""
-            raise CommandError(f"command failed with status {exc.returncode}: {rendered}{suffix}") from exc
+            raise CommandError(
+                f"command failed with status {exc.returncode}: {rendered}{suffix}"
+            ) from exc

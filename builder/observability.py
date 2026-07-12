@@ -25,8 +25,7 @@ def collect_toolchain(target: str, runner: Any) -> dict[str, str]:
     if target == "android":
         commands["java"] = ["javac", "-version"]
     return {
-        name: " | ".join(runner.capture(command).splitlines())
-        for name, command in commands.items()
+        name: " | ".join(runner.capture(command).splitlines()) for name, command in commands.items()
     }
 
 
