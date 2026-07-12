@@ -1,5 +1,7 @@
 # M150 WebRTC Builds Implementation Plan
 
+> Windows x64 extension work is tracked in `docs/superpowers/plans/2026-07-12-windows-x64-build.md`; its five-target and Windows package contracts supersede the four-platform assertions below when both plans are in scope.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build and publish reproducible WebRTC M150 static libraries and Apple frameworks through manually triggered GitHub Actions.
@@ -149,3 +151,4 @@
 
 - 2026-07-12: The user explicitly required hosted-build observability. The implementation therefore persists phase timing/failure events, tees complete build logs, records runner/toolchain/disk/source/GN diagnostics, uploads diagnostics artifacts under `if: always()`, and links them from each Step Summary. Command logs deliberately omit environment mappings and secrets.
 - 2026-07-12: `actionlint` rejects `runner.temp` in job-level `env`; workflow workspaces use the ignored `${{ github.workspace }}/build-workspace*` directories instead. This remains ephemeral and uses the same hosted-runner disk.
+- 2026-07-12: Windows x64 is being added as a first-class package on `windows-2022`; the extension deliberately keeps the M150 `/MT` ABI, uses upstream `obj/webrtc.lib`, and is hosted-build validated before any combined release is rerun.

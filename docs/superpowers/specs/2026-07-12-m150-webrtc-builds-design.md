@@ -2,7 +2,7 @@
 
 ## Goal
 
-Create a public `aweffr/my-webrtc-builds` repository whose GitHub Actions manually build and publish reproducible WebRTC M150 binaries for Android, iOS, macOS x86_64, and macOS arm64.
+Create a public `aweffr/my-webrtc-builds` repository whose GitHub Actions manually build and publish reproducible WebRTC M150 binaries for Android, iOS, macOS x86_64, macOS arm64, and Windows x86_64.
 
 ## Fixed upstream version
 
@@ -24,7 +24,7 @@ The project borrows proven concepts rather than either reference repository whol
 - From Shiguredo: exact M150 source pin, complete-object static archive assembly, dependency-completeness patch, generated third-party notices, and M150 H.265 patches.
 - From stasel: building `sdk:mac_framework_objc` and packaging Apple frameworks.
 
-Only these upstream behavior patches are vendored: `add_deps.patch`, `h265.patch`, `h265_ios.patch`, and `h265_android.patch`. A project-maintained `macos_h265_framework.patch` exposes the already-wired H.265 implementation and public headers from the M150 macOS framework target. A minimal `codec_licenses.patch` prevents the upstream notice generator from rejecting the introduced codec dependencies. Proxy, simulcast, Sora SDK, TLS, audio-device, and milestone-update patches remain out of scope.
+Only these upstream behavior patches are vendored: `add_deps.patch`, `windows_add_deps.patch`, `h265.patch`, `h265_ios.patch`, and `h265_android.patch`. A project-maintained `macos_h265_framework.patch` exposes the already-wired H.265 implementation and public headers from the M150 macOS framework target. A minimal `codec_licenses.patch` prevents the upstream notice generator from rejecting the introduced codec dependencies. Proxy, simulcast, Sora SDK, TLS, audio-device, and milestone-update patches remain out of scope except for the Windows dependency-completeness hunk required by the standalone root library.
 
 ## Platform contracts
 
@@ -52,6 +52,16 @@ Only these upstream behavior patches are vendored: `add_deps.patch`, `h265.patch
 
 The repository compiles codec capabilities but does not alter upstream runtime codec-factory selection. H.265 software fallback is not part of this project.
 
+### Windows
+
+- Runner: `windows-2022` with the installed Visual Studio 2022 toolchain
+- ABI: x86_64, non-component Release static library using the upstream `/MT` CRT contract
+- Outputs: C++ headers, `lib/webrtc.lib`, CastTuning common C++ API, metadata, notices, and checksums
+- GN uses `target_os="win"`, `target_cpu="x64"`, `use_custom_libcxx=false`, and the installed toolchain with `DEPOT_TOOLS_WIN_TOOLCHAIN=0`
+- Static-library H.264: bundled OpenH264 encoder and FFmpeg decoder using `rtc_use_h264=true`, `rtc_system_openh264=false`, and `ffmpeg_branding="Chrome"`
+- H.265: parser/negotiation capability only; no Windows encoder/decoder integration is promised
+- No Windows-specific CastTuning wrapper is included; consumers use the common C++ API directly
+
 ## Workflows and release flow
 
 All workflows use only `workflow_dispatch`:
@@ -60,14 +70,15 @@ All workflows use only `workflow_dispatch`:
 2. Build iOS
 3. Build macOS x64
 4. Build macOS arm64
-5. Package macOS XCFramework
-6. Publish Release
+5. Build Windows x64
+6. Package macOS XCFramework
+7. Publish Release
 
 Build workflows upload compressed packages as 30-day Actions artifacts. Compression happens before upload so Apple framework symlinks survive artifact transport.
 
 The XCFramework workflow accepts explicit x64 and arm64 run IDs. It rejects mismatched WebRTC commits, builder commits, configuration fingerprints, or header manifests. It creates a universal framework binary with `lipo`, then wraps that framework with `xcodebuild -create-xcframework`.
 
-The release workflow accepts the four build run IDs and the XCFramework run ID. It rejects mixed builder commits and existing release tags. The combined-release tag format is `webrtc-m150.7871.3-<builder-short-sha>-YYYYMMDD-all`.
+The release workflow accepts five build run IDs and the XCFramework run ID. It rejects mixed builder commits and existing release tags. The combined-release tag format is `webrtc-m150.7871.3-<builder-short-sha>-YYYYMMDD-all`.
 
 ## Package contract
 
@@ -77,6 +88,7 @@ Binary packages are:
 - `webrtc-m150-ios.tar.gz`
 - `webrtc-m150-macos-x64.tar.gz`
 - `webrtc-m150-macos-arm64.tar.gz`
+- `webrtc-m150-windows-x64.zip`
 - `WebRTC-m150-macos-universal.xcframework.zip`
 
 Every package includes or is accompanied by machine-readable metadata containing schema version, target, source version, builder commit, configuration fingerprint, GN arguments, patch hashes, runner/toolchain details (including the M150-pinned `depot_tools` commit), and payload checksums. Static packages also contain upstream `LICENSE`, `PATENTS`, `AUTHORS`, generated third-party `NOTICE`, and `SHA256SUMS`.
@@ -87,7 +99,7 @@ The builder fails immediately when source identity, patch applicability, expecte
 
 Unit tests protect target configuration, metadata construction and validation, archive path safety, cross-run compatibility, and release-tag rules. Each actual build additionally verifies archive members, CPU architecture, framework plist/symlinks/headers, Java contents, codec symbols, checksums, and package structure.
 
-The initial delivery is complete only after all four hosted-runner builds succeed, the universal XCFramework is produced, and the corresponding GitHub Release is published and downloaded for checksum verification.
+The full release delivery is complete only after all five hosted-runner builds succeed, the universal XCFramework is produced, and the corresponding GitHub Release is published and downloaded for checksum verification. The Windows extension itself is accepted on this branch after its hosted build succeeds; combined-release publication remains a later same-commit operation.
 
 ## Observability
 
