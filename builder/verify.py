@@ -51,6 +51,13 @@ def verify_package_layout(target: str, root: Path) -> None:
                 "Frameworks/WebRTC.framework/Headers/RTCCastTuning.h",
             )
         )
+    elif target == "windows-x64":
+        required.extend(
+            (
+                "lib/webrtc.lib",
+                "include/api/cast_tuning/cast_tuning_config.h",
+            )
+        )
     else:
         raise VerificationError(f"unsupported verification target {target!r}")
     for relative in required:
@@ -77,11 +84,49 @@ def _expect_symbols(
     runner: CaptureRunner,
     binary: Path,
     required_symbols: tuple[str, ...],
+    *,
+    tool: Path | str = "nm",
 ) -> None:
-    symbols = runner.capture(["nm", binary])
+    symbols = runner.capture([tool, "--demangle", binary] if str(tool).endswith("llvm-nm.exe") else [tool, binary])
     for symbol in required_symbols:
         if symbol not in symbols:
             raise VerificationError(f"required symbol {symbol!r} is missing from {binary}")
+
+
+def _expect_windows_binary(
+    runner: CaptureRunner,
+    library: Path,
+    *,
+    tool_dir: Path | str | None,
+) -> None:
+    root = Path(tool_dir) if tool_dir is not None else Path(".")
+    lib_tool = root / "llvm-lib.exe"
+    readobj_tool = root / "llvm-readobj.exe"
+    nm_tool = root / "llvm-nm.exe"
+    members = runner.capture([lib_tool, "/list", library])
+    if not members.strip():
+        raise VerificationError(f"static library has no members: {library}")
+
+    headers = runner.capture([readobj_tool, "--file-headers", library])
+    machines = {
+        line.split(":", 1)[1].strip().split()[0]
+        for line in headers.splitlines()
+        if line.strip().startswith("Machine:")
+    }
+    if machines != {"IMAGE_FILE_MACHINE_AMD64"}:
+        raise VerificationError(
+            f"unexpected COFF architecture for {library}: {sorted(machines)}; expected AMD64"
+        )
+    _expect_symbols(
+        runner,
+        library,
+        (
+            "H264EncoderImpl",
+            "H264DecoderImpl",
+            "webrtc::cast_tuning::CastTuningController",
+        ),
+        tool=nm_tool,
+    )
 
 
 def _framework_binary(root: Path) -> Path:
@@ -101,6 +146,7 @@ def verify_binaries(
     runner: CaptureRunner,
     *,
     android_archiver: Path | str = "llvm-ar",
+    windows_tool_dir: Path | str | None = None,
 ) -> None:
     if target == "android":
         library = root / "lib" / "arm64-v8a" / "libwebrtc.a"
@@ -167,5 +213,8 @@ def verify_binaries(
                 "RTCCastTuningController",
             ),
         )
+        return
+    if target == "windows-x64":
+        _expect_windows_binary(runner, root / "lib" / "webrtc.lib", tool_dir=windows_tool_dir)
         return
     raise VerificationError(f"unsupported binary verification target {target!r}")

@@ -71,6 +71,19 @@ class PackageLayoutVerificationTests(unittest.TestCase):
             with self.assertRaisesRegex(VerificationError, "RTCCastTuning.h"):
                 verify_package_layout("macos-arm64", root)
 
+    def test_windows_requires_library_and_cast_tuning_header(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            create_common_tree(root)
+            (root / "lib").mkdir()
+            with self.assertRaisesRegex(VerificationError, "lib/webrtc.lib"):
+                verify_package_layout("windows-x64", root)
+            (root / "lib" / "webrtc.lib").write_bytes(b"archive")
+            tuning = root / "include" / "api" / "cast_tuning" / "cast_tuning_config.h"
+            tuning.unlink()
+            with self.assertRaisesRegex(VerificationError, "cast_tuning_config.h"):
+                verify_package_layout("windows-x64", root)
+
 
 class FakeRunner:
     def __init__(self, responses: dict[str, str]) -> None:
@@ -80,7 +93,7 @@ class FakeRunner:
     def capture(self, argv, *, cwd=None, env=None) -> str:
         command = tuple(map(str, argv))
         self.commands.append(command)
-        return self.responses.get(command[0], "")
+        return self.responses.get(command[0], self.responses.get(Path(command[0]).name, ""))
 
 
 class BinaryVerificationTests(unittest.TestCase):
@@ -222,6 +235,42 @@ class BinaryVerificationTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(VerificationError, "RTCCastTuningController"):
                 verify_binaries("macos-arm64", root, runner)
+
+    def test_windows_checks_coff_architecture_and_symbols(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "lib").mkdir()
+            library = root / "lib" / "webrtc.lib"
+            library.write_bytes(b"archive")
+            runner = FakeRunner(
+                {
+                    "llvm-lib.exe": "webrtc.obj",
+                    "llvm-readobj.exe": (
+                        "FileHeader {\n  Machine: IMAGE_FILE_MACHINE_AMD64 (0x8664)\n}"
+                    ),
+                    "llvm-nm.exe": (
+                        "H264EncoderImpl H264DecoderImpl "
+                        "webrtc::cast_tuning::CastTuningController"
+                    ),
+                }
+            )
+            verify_binaries("windows-x64", root, runner)
+        self.assertTrue(any(command[0].endswith("llvm-readobj.exe") for command in runner.commands))
+
+    def test_windows_rejects_wrong_coff_architecture(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "lib").mkdir()
+            (root / "lib" / "webrtc.lib").write_bytes(b"archive")
+            runner = FakeRunner(
+                {
+                    "llvm-lib.exe": "webrtc.obj",
+                    "llvm-readobj.exe": "Machine: IMAGE_FILE_MACHINE_I386 (0x14c)",
+                    "llvm-nm.exe": "",
+                }
+            )
+            with self.assertRaisesRegex(VerificationError, "AMD64"):
+                verify_binaries("windows-x64", root, runner)
 
 
 if __name__ == "__main__":

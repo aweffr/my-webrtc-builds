@@ -4,7 +4,9 @@ import hashlib
 import os
 import posixpath
 import shutil
+import stat
 import tarfile
+import zipfile
 from pathlib import Path, PurePosixPath
 
 from .build import BuildUnit
@@ -45,6 +47,7 @@ def package_filename(target: str) -> str:
         "ios": "webrtc-m150-ios.tar.gz",
         "macos-x64": "webrtc-m150-macos-x64.tar.gz",
         "macos-arm64": "webrtc-m150-macos-arm64.tar.gz",
+        "windows-x64": "webrtc-m150-windows-x64.zip",
     }
     try:
         return filenames[target]
@@ -64,6 +67,17 @@ def create_tar_gz(source: Path, archive: Path, *, arcname: str) -> None:
     archive.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive, "w:gz", dereference=False) as stream:
         stream.add(source, arcname=arcname, recursive=True)
+
+
+def create_zip(source: Path, archive: Path, *, arcname: str) -> None:
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    prefix = arcname.rstrip("/")
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as stream:
+        for path in sorted(source.rglob("*")):
+            if path.is_dir():
+                continue
+            relative = path.relative_to(source).as_posix()
+            stream.write(path, f"{prefix}/{relative}")
 
 
 def _validate_member(member: tarfile.TarInfo) -> None:
@@ -87,6 +101,46 @@ def safe_extract_tar(archive: Path, destination: Path) -> None:
         for member in members:
             _validate_member(member)
         stream.extractall(destination, members=members)
+
+
+def _validate_zip_member(member: zipfile.ZipInfo) -> PurePosixPath:
+    normalized = member.filename.replace("\\", "/")
+    path = PurePosixPath(normalized)
+    if (
+        path.is_absolute()
+        or not path.parts
+        or ".." in path.parts
+        or ":" in path.parts[0]
+    ):
+        raise PackageError(f"unsafe archive path: {member.filename}")
+    mode = (member.external_attr >> 16) & 0o170000
+    if mode == stat.S_IFLNK:
+        raise PackageError(f"unsafe archive link: {member.filename}")
+    return path
+
+
+def safe_extract_zip(archive: Path, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive, "r") as stream:
+        members = [(member, _validate_zip_member(member)) for member in stream.infolist()]
+        for member, relative in members:
+            path = destination.joinpath(*relative.parts)
+            if member.is_dir():
+                path.mkdir(parents=True, exist_ok=True)
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with stream.open(member, "r") as source, path.open("wb") as target:
+                shutil.copyfileobj(source, target)
+
+
+def safe_extract_archive(archive: Path, destination: Path) -> None:
+    if archive.name.endswith(".zip"):
+        safe_extract_zip(archive, destination)
+        return
+    if archive.name.endswith(".tar.gz") or archive.name.endswith(".tgz"):
+        safe_extract_tar(archive, destination)
+        return
+    raise PackageError(f"unsupported archive format: {archive.name}")
 
 
 def _copy_headers(source: Path, destination: Path) -> None:
@@ -130,6 +184,11 @@ def _copy_payload(target: TargetConfig, units: tuple[BuildUnit, ...], stage: Pat
             destination = stage / "lib" / architecture.replace(":", "-") / "libwebrtc.a"
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(unit.output_dir / "libwebrtc.a", destination)
+    elif target.name == "windows-x64":
+        unit = units[0]
+        library = stage / "lib" / "webrtc.lib"
+        library.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(unit.output_dir / "webrtc.lib", library)
     else:
         unit = units[0]
         library = stage / "lib" / "libwebrtc.a"
@@ -174,7 +233,7 @@ def stage_and_package(
     for ninja_target in target.ninja_targets:
         license_command.extend(("--target", ninja_target))
     license_command.extend((stage, *(unit.output_dir for unit in units)))
-    runner.run(license_command, cwd=workspace.src, env=workspace.environment())
+    runner.run(license_command, cwd=workspace.src, env=workspace.environment(target))
     generated_license = stage / "LICENSE.md"
     if not generated_license.is_file():
         raise PackageError("WebRTC license generator did not create LICENSE.md")
@@ -219,7 +278,15 @@ def stage_and_package(
             if target.name == "android"
             else "llvm-ar"
         ),
+        windows_tool_dir=(
+            workspace.src / "third_party/llvm-build/Release+Asserts/bin"
+            if target.name == "windows-x64"
+            else None
+        ),
     )
     archive = dist_dir / package_filename(target.name)
-    create_tar_gz(stage, archive, arcname="webrtc")
+    if target.name == "windows-x64":
+        create_zip(stage, archive, arcname="webrtc")
+    else:
+        create_tar_gz(stage, archive, arcname="webrtc")
     return archive
