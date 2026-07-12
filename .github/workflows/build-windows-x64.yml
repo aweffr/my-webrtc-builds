@@ -1,0 +1,141 @@
+name: Build Windows x64
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-windows-x64
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    env:
+      WORK_DIR: C:\webrtc-castkit-build
+      DIST_DIR: ${{ github.workspace }}\dist
+      DIAGNOSTICS_DIR: ${{ github.workspace }}\diagnostics
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Check out builder
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Record runner state
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path $env:DIST_DIR, $env:DIAGNOSTICS_DIR | Out-Null
+          @(
+            (Get-Date).ToUniversalTime().ToString("o")
+            (Get-ComputerInfo -Property WindowsProductName, WindowsVersion, OsBuildNumber | Out-String)
+            "RUNNER_OS=$env:RUNNER_OS"
+            "RUNNER_ARCH=$env:RUNNER_ARCH"
+            (python3 --version 2>&1 | Out-String)
+            (git --version | Out-String)
+            (Get-PSDrive C, D | Out-String)
+            (vswhere -latest -products "*" -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion | Out-String)
+          ) | Tee-Object -FilePath "$env:DIAGNOSTICS_DIR\runner-before.txt"
+
+      - name: Free runner disk space
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          foreach ($path in @($env:ANDROID_HOME, $env:ANDROID_NDK_HOME, $env:JAVA_HOME_8_X64, $env:JAVA_HOME_11_X64)) {
+            if ($path -and (Test-Path $path)) {
+              Remove-Item -Recurse -Force $path -ErrorAction SilentlyContinue
+            }
+          }
+          Get-PSDrive C, D
+
+      - name: Run unit tests
+        shell: pwsh
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Build and package windows-x64
+        id: build
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          python3 -u -m builder build `
+            --target windows-x64 `
+            --work-dir "$env:WORK_DIR" `
+            --dist-dir "$env:DIST_DIR" `
+            --builder-commit "$env:GITHUB_SHA" `
+            2>&1 | Tee-Object -FilePath "$env:DIAGNOSTICS_DIR\build.log"
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { exit $code }
+
+      - name: Upload binary package
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: webrtc-m150-windows-x64
+          path: ${{ env.DIST_DIR }}\webrtc-m150-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Collect diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          New-Item -ItemType Directory -Force -Path $env:DIAGNOSTICS_DIR | Out-Null
+          @(
+            (Get-Date).ToUniversalTime().ToString("o")
+            (Get-PSDrive C, D | Out-String)
+            (Get-ChildItem $env:WORK_DIR, $env:DIST_DIR -ErrorAction SilentlyContinue | Out-String)
+          ) | Set-Content "$env:DIAGNOSTICS_DIR\runner-after.txt"
+          $source = Join-Path $env:WORK_DIR "checkout\src"
+          if (Test-Path (Join-Path $source ".git")) {
+            git -C $source rev-parse HEAD | Set-Content "$env:DIAGNOSTICS_DIR\webrtc-commit.txt"
+            git -C $source status --short | Set-Content "$env:DIAGNOSTICS_DIR\webrtc-status.txt"
+          }
+          if (Test-Path (Join-Path $env:WORK_DIR "out")) {
+            Get-ChildItem (Join-Path $env:WORK_DIR "out") -Filter gn-args.txt -Recurse | ForEach-Object {
+              $safe = $_.FullName.Substring($env:WORK_DIR.Length).TrimStart("\", "/").Replace("\", "-").Replace("/", "-")
+              Copy-Item $_.FullName (Join-Path $env:DIAGNOSTICS_DIR "gn-args-$safe") -Force
+            }
+            Get-ChildItem (Join-Path $env:WORK_DIR "out") -File -Recurse | Select-Object -ExpandProperty FullName | Set-Content "$env:DIAGNOSTICS_DIR\output-files.txt"
+          }
+          Get-FileHash patches\m150\*.patch -Algorithm SHA256 | Format-Table -AutoSize | Out-String | Set-Content "$env:DIAGNOSTICS_DIR\patch-hashes.txt"
+          @(
+            "## Build Windows x64"
+            ""
+            "- Target: ``windows-x64``"
+            "- Builder commit: ``$env:GITHUB_SHA``"
+            "- Build outcome: ``${{ steps.build.outcome }}``"
+            "- Diagnostics artifact: ``webrtc-m150-windows-x64-diagnostics``"
+            if (Test-Path "$env:WORK_DIR\diagnostics\build-events.jsonl") {
+              ""
+              "### Phase journal"
+              "~~~json"
+              Get-Content "$env:WORK_DIR\diagnostics\build-events.jsonl" -Tail 30
+              "~~~"
+            }
+          ) | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: webrtc-m150-windows-x64-diagnostics
+          path: |
+            ${{ env.DIAGNOSTICS_DIR }}
+            ${{ env.WORK_DIR }}\diagnostics
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Propagate build failure
+        if: steps.build.outcome == 'failure'
+        shell: pwsh
+        run: exit 1

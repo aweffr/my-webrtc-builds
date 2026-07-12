@@ -19,6 +19,10 @@ on:
         description: Successful Build macOS arm64 run ID
         required: true
         type: string
+      windows_x64_run_id:
+        description: Successful Build Windows x64 run ID
+        required: true
+        type: string
       xcframework_run_id:
         description: Successful Package macOS XCFramework run ID
         required: true
@@ -89,6 +93,15 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ inputs.macos_arm64_run_id }}
 
+      - name: Download Windows x64 package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: webrtc-m150-windows-x64
+          path: inputs/windows-x64
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.windows_x64_run_id }}
+
       - name: Download macOS XCFramework package
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -115,6 +128,7 @@ jobs:
             --ios-package inputs/ios/webrtc-m150-ios.tar.gz \
             --macos-x64-package inputs/macos-x64/webrtc-m150-macos-x64.tar.gz \
             --macos-arm64-package inputs/macos-arm64/webrtc-m150-macos-arm64.tar.gz \
+            --windows-x64-package inputs/windows-x64/webrtc-m150-windows-x64.zip \
             --xcframework inputs/xcframework/WebRTC-m150-macos-universal.xcframework.zip \
             --xcframework-metadata inputs/xcframework/xcframework-metadata.json \
             --output-dir "$RELEASE_DIR" \
@@ -152,6 +166,7 @@ jobs:
             inputs/ios/webrtc-m150-ios.tar.gz \
             inputs/macos-x64/webrtc-m150-macos-x64.tar.gz \
             inputs/macos-arm64/webrtc-m150-macos-arm64.tar.gz \
+            inputs/windows-x64/webrtc-m150-windows-x64.zip \
             inputs/xcframework/WebRTC-m150-macos-universal.xcframework.zip \
             "$RELEASE_DIR/release-manifest.json" \
             "$RELEASE_DIR/SHA256SUMS"
