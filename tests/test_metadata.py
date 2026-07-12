@@ -1,0 +1,113 @@
+import json
+import tempfile
+import unittest
+from dataclasses import replace
+from pathlib import Path
+
+from builder.config import get_target
+from builder.metadata import (
+    BuildMetadata,
+    MetadataError,
+    configuration_fingerprint,
+    load_metadata,
+    release_tag,
+    save_metadata,
+    validate_compatible,
+)
+
+
+def metadata_for(target: str = "macos-x64") -> BuildMetadata:
+    return BuildMetadata.create(
+        target=target,
+        builder_commit="a" * 40,
+        header_manifest="headers-sha256",
+        patch_hashes={"h265.patch": "patch-sha256"},
+        gn_args={"x64": get_target("macos-x64").gn_args_for("x64")},
+        toolchain={"xcode": "26.0.1"},
+    )
+
+
+class FingerprintTests(unittest.TestCase):
+    def test_configuration_fingerprint_is_deterministic(self) -> None:
+        first = configuration_fingerprint(get_target("macos-x64"))
+        second = configuration_fingerprint(get_target("macos-x64"))
+        self.assertEqual(first, second)
+        self.assertEqual(len(first), 64)
+
+    def test_target_configuration_changes_fingerprint(self) -> None:
+        target = get_target("macos-x64")
+        changed = replace(target, deployment_target="15.0")
+        self.assertNotEqual(
+            configuration_fingerprint(target),
+            configuration_fingerprint(changed),
+        )
+
+
+class MetadataTests(unittest.TestCase):
+    def test_metadata_round_trip_uses_canonical_json(self) -> None:
+        metadata = metadata_for()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "metadata.json")
+            save_metadata(path, metadata)
+            loaded = load_metadata(path)
+            self.assertEqual(loaded, metadata)
+            self.assertTrue(path.read_text().endswith("\n"))
+            self.assertEqual(json.loads(path.read_text())["schema_version"], 1)
+
+    def test_unknown_schema_is_rejected(self) -> None:
+        payload = metadata_for().to_dict()
+        payload["schema_version"] = 2
+        with self.assertRaisesRegex(MetadataError, "schema version"):
+            BuildMetadata.from_dict(payload)
+
+    def test_mixed_source_or_builder_commit_is_rejected(self) -> None:
+        first = metadata_for("macos-x64")
+        second = metadata_for("macos-arm64")
+        validate_compatible((first, second))
+
+        with self.assertRaisesRegex(MetadataError, "builder commit"):
+            validate_compatible((first, replace(second, builder_commit="b" * 40)))
+
+        changed_source = dict(second.source)
+        changed_source["commit"] = "b" * 40
+        with self.assertRaisesRegex(MetadataError, "source"):
+            validate_compatible((first, replace(second, source=changed_source)))
+
+    def test_mixed_headers_are_rejected_for_macos_merge(self) -> None:
+        first = metadata_for("macos-x64")
+        second = replace(metadata_for("macos-arm64"), header_manifest="different")
+        with self.assertRaisesRegex(MetadataError, "header manifest"):
+            validate_compatible((first, second), require_same_headers=True)
+
+    def test_platform_specific_patch_sets_are_allowed_for_release(self) -> None:
+        first = metadata_for("android")
+        second = replace(
+            metadata_for("ios"),
+            patch_hashes={"h265_ios.patch": "apple-patch"},
+        )
+        validate_compatible((first, second))
+
+        with self.assertRaisesRegex(MetadataError, "patch set"):
+            validate_compatible((first, second), require_same_patches=True)
+
+    def test_metadata_target_must_be_known(self) -> None:
+        payload = metadata_for().to_dict()
+        payload["target"] = "linux"
+        with self.assertRaisesRegex(MetadataError, "target"):
+            BuildMetadata.from_dict(payload)
+
+
+class ReleaseTagTests(unittest.TestCase):
+    def test_positive_revision_builds_fixed_release_tag(self) -> None:
+        self.assertEqual(release_tag(1), "m150.7871.3-r1")
+        self.assertEqual(release_tag(7), "m150.7871.3-r7")
+
+    def test_non_positive_revision_is_rejected(self) -> None:
+        for revision in (0, -1):
+            with self.subTest(revision=revision):
+                with self.assertRaisesRegex(ValueError, "positive"):
+                    release_tag(revision)
+
+
+if __name__ == "__main__":
+    unittest.main()
