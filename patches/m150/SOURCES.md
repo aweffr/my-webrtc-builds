@@ -18,7 +18,9 @@ not change codec behavior.
 `macos_h265_framework.patch` is maintained by this project. The Shiguredo H.265
 patch wires the codec implementation into the shared Apple targets but adds
 the public H.265 headers only to the iOS framework target. This small follow-up
-adds the same headers to M150's macOS framework target.
+adds the same headers to M150's macOS framework target and fixes the M150 macOS
+framework template so its generated public headers are copied beside the
+umbrella header.
 
 | File | SHA-256 |
 | --- | --- |
@@ -27,4 +29,4 @@ adds the same headers to M150's macOS framework target.
 | `h265_android.patch` | `9598c581d937fc9e15c34eafa6d42f707e40df65999453cdd8e7659d29eb7d8e` |
 | `h265_ios.patch` | `13cb55f38774a6312ca0b965779f8c48e581d23ae31680e813f7418966c5482a` |
 | `codec_licenses.patch` | `96766489dd4f6fb5cf2db77befcf53863c7a5431c5995d6658ff846a78baf71b` |
-| `macos_h265_framework.patch` | `893ead8cd660e25bbdce88196f926acbde39daf9cb1cd41f6572af376f97b093` |
+| `macos_h265_framework.patch` | `948a39aad68e4d579bb948ca05fcbcdf40bbe1bfccb4f42419754982fe870ff4` |

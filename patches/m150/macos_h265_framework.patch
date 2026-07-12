@@ -19,3 +19,26 @@ diff --git a/sdk/BUILD.gn b/sdk/BUILD.gn
          if (!build_with_chromium) {
            sources += [
              "objc/api/logging/RTCCallbackLogger.h",
+diff --git a/webrtc.gni b/webrtc.gni
+--- a/webrtc.gni
++++ b/webrtc.gni
+@@ -1225,11 +1225,16 @@ if (is_mac || is_ios) {
+     if (is_mac) {
+       headers_dir = "Versions/A/Headers"
+       copy("copy_umbrella_header_$this_target_name") {
+-        sources = [ umbrella_header_path ]
++        sources = [ umbrella_header_path ]
++        sources += get_target_outputs(
++                ":create_bracket_include_headers_$this_target_name")
+         outputs = [
+-          "$root_out_dir/$output_name.framework/$headers_dir/$output_name.h",
++          "$root_out_dir/$output_name.framework/$headers_dir/{{source_file_part}}",
+         ]
+-        deps = [ ":umbrella_header_$this_target_name" ]
++        deps = [
++          ":umbrella_header_$this_target_name",
++          ":create_bracket_include_headers_$this_target_name",
++        ]
+       }
+     }
+   }
