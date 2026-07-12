@@ -101,3 +101,4 @@
 - 2026-07-12: The pinned M150 root `webrtc` target is `complete_static_lib`; Windows should copy `obj/webrtc.lib` instead of re-archiving `.obj` files.
 - 2026-07-12: The pinned M150 Windows build configuration uses desktop static CRT `/MT`; changing to `/MD` would require a separate Chromium build-config decision.
 - 2026-07-12: `windows-2022` is the verified runner for this M150 line; `windows-latest` now moves with newer Windows/Visual Studio images.
+- 2026-07-12: GitHub `workflow_dispatch` does not register a workflow file that exists only on a feature branch; the API returns 404 until the workflow is present on the repository default branch. Hosted validation therefore requires either merging the CI workflow to `main` or explicitly accepting local/actionlint-only validation.
