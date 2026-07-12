@@ -48,6 +48,7 @@ class TargetConfigTests(unittest.TestCase):
             self.assertIn("rtc_system_openh264=false", args)
             self.assertIn('ffmpeg_branding="Chrome"', args)
             self.assertIn("rtc_use_h265=true", args)
+            self.assertIn("rtc_enable_objc_symbol_export=true", args)
 
         for name in ("android", "ios"):
             args = get_target(name).gn_args_for(get_target(name).architectures[0])
@@ -57,6 +58,8 @@ class TargetConfigTests(unittest.TestCase):
     def test_macos_applies_codec_license_mapping_patch(self) -> None:
         self.assertIn("codec_licenses.patch", get_target("macos-x64").patches)
         self.assertIn("codec_licenses.patch", get_target("macos-arm64").patches)
+        self.assertIn("macos_h265_framework.patch", get_target("macos-x64").patches)
+        self.assertIn("macos_h265_framework.patch", get_target("macos-arm64").patches)
         self.assertNotIn("codec_licenses.patch", get_target("android").patches)
         self.assertNotIn("codec_licenses.patch", get_target("ios").patches)
 

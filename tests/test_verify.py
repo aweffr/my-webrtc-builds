@@ -42,6 +42,13 @@ class PackageLayoutVerificationTests(unittest.TestCase):
             (root / "lib" / "libwebrtc.a").write_bytes(b"archive")
             with self.assertRaisesRegex(VerificationError, "WebRTC.framework"):
                 verify_package_layout("macos-arm64", root)
+            headers = root / "Frameworks" / "WebRTC.framework" / "Headers"
+            headers.mkdir(parents=True)
+            with self.assertRaisesRegex(VerificationError, "RTCVideoEncoderH265.h"):
+                verify_package_layout("macos-arm64", root)
+            (headers / "RTCVideoEncoderH265.h").write_text("encoder")
+            (headers / "RTCVideoDecoderH265.h").write_text("decoder")
+            verify_package_layout("macos-arm64", root)
 
 
 class FakeRunner:

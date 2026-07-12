@@ -35,7 +35,14 @@ def verify_package_layout(target: str, root: Path) -> None:
             )
         )
     elif target in {"macos-x64", "macos-arm64"}:
-        required.extend(("lib/libwebrtc.a", "Frameworks/WebRTC.framework"))
+        required.extend(
+            (
+                "lib/libwebrtc.a",
+                "Frameworks/WebRTC.framework",
+                "Frameworks/WebRTC.framework/Headers/RTCVideoEncoderH265.h",
+                "Frameworks/WebRTC.framework/Headers/RTCVideoDecoderH265.h",
+            )
+        )
     else:
         raise VerificationError(f"unsupported verification target {target!r}")
     for relative in required:

@@ -24,7 +24,7 @@ The project borrows proven concepts rather than either reference repository whol
 - From Shiguredo: exact M150 source pin, complete-object static archive assembly, dependency-completeness patch, generated third-party notices, and M150 H.265 patches.
 - From stasel: building `sdk:mac_framework_objc` and packaging Apple frameworks.
 
-Only these behavior patches are vendored: `add_deps.patch`, `h265.patch`, `h265_ios.patch`, and `h265_android.patch`. A project-maintained `codec_licenses.patch` adds the FFmpeg and OpenH264 license-file mappings required by the M150 notice generator after those dependencies enter the graph; it does not change codec behavior. Proxy, simulcast, Sora SDK, TLS, audio-device, and milestone-update patches remain out of scope.
+Only these upstream behavior patches are vendored: `add_deps.patch`, `h265.patch`, `h265_ios.patch`, and `h265_android.patch`. A project-maintained `macos_h265_framework.patch` exposes the already-wired H.265 implementation and public headers from the M150 macOS framework target. A minimal `codec_licenses.patch` prevents the upstream notice generator from rejecting the introduced codec dependencies. Proxy, simulcast, Sora SDK, TLS, audio-device, and milestone-update patches remain out of scope.
 
 ## Platform contracts
 

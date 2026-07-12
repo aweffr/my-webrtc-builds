@@ -1,0 +1,21 @@
+diff --git a/sdk/BUILD.gn b/sdk/BUILD.gn
+--- a/sdk/BUILD.gn
++++ b/sdk/BUILD.gn
+@@ -1597,9 +1597,17 @@ if (is_ios || is_mac) {
+           "objc/components/video_codec/RTCVideoDecoderH264.h",
+           "objc/components/video_codec/RTCVideoEncoderFactoryH264.h",
+           "objc/components/video_codec/RTCVideoEncoderH264.h",
+           "objc/components/video_frame_buffer/RTCCVPixelBuffer.h",
+           "objc/helpers/RTCDispatcher.h",
+         ]
++        if (rtc_use_h265) {
++          sources += [
++            "objc/components/video_codec/RTCCodecSpecificInfoH265.h",
++            "objc/components/video_codec/RTCH265ProfileLevelId.h",
++            "objc/components/video_codec/RTCVideoDecoderH265.h",
++            "objc/components/video_codec/RTCVideoEncoderH265.h",
++          ]
++        }
+         if (!build_with_chromium) {
+           sources += [
+             "objc/api/logging/RTCCallbackLogger.h",

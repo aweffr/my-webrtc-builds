@@ -92,6 +92,8 @@ jobs:
           fi
           find "$WORK_DIR/out" -name gn-args.txt -type f -print -exec cp {} "$DIAGNOSTICS_DIR/" \; 2>/dev/null
           find "$WORK_DIR/out" -maxdepth 4 -type f -print > "$DIAGNOSTICS_DIR/output-files.txt" 2>/dev/null
+          nm "$WORK_DIR/out/macos-x64/x64/WebRTC.framework/WebRTC" > "$DIAGNOSTICS_DIR/framework-symbols.txt" 2>&1
+          find "$WORK_DIR/out/macos-x64/x64/WebRTC.framework" -type f -o -type l > "$DIAGNOSTICS_DIR/framework-files.txt" 2>/dev/null
           {
             echo "## Build macOS x64"
             echo

@@ -15,6 +15,11 @@ license generator with the pinned FFmpeg LGPL 2.1 text and Cisco OpenH264
 license after those dependencies are introduced by the codec patches. It does
 not change codec behavior.
 
+`macos_h265_framework.patch` is maintained by this project. The Shiguredo H.265
+patch wires the codec implementation into the shared Apple targets but adds
+the public H.265 headers only to the iOS framework target. This small follow-up
+adds the same headers to M150's macOS framework target.
+
 | File | SHA-256 |
 | --- | --- |
 | `add_deps.patch` | `835b09d756f9dc3cbf2286476d654b08c82fbcc141a40f15ecf6145d789d272b` |
@@ -22,3 +27,4 @@ not change codec behavior.
 | `h265_android.patch` | `9598c581d937fc9e15c34eafa6d42f707e40df65999453cdd8e7659d29eb7d8e` |
 | `h265_ios.patch` | `13cb55f38774a6312ca0b965779f8c48e581d23ae31680e813f7418966c5482a` |
 | `codec_licenses.patch` | `96766489dd4f6fb5cf2db77befcf53863c7a5431c5995d6658ff846a78baf71b` |
+| `macos_h265_framework.patch` | `893ead8cd660e25bbdce88196f926acbde39daf9cb1cd41f6572af376f97b093` |
