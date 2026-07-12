@@ -1,0 +1,98 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from builder.verify import VerificationError, verify_binaries, verify_package_layout
+
+
+def create_common_tree(root: Path) -> None:
+    (root / "include" / "api").mkdir(parents=True)
+    (root / "include" / "api" / "peer_connection_interface.h").write_text("header")
+    for name in ("metadata.json", "LICENSE", "PATENTS", "AUTHORS", "NOTICE", "SHA256SUMS"):
+        (root / name).write_text(name)
+
+
+class PackageLayoutVerificationTests(unittest.TestCase):
+    def test_android_requires_static_library_and_jar(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            create_common_tree(root)
+            (root / "lib" / "arm64-v8a").mkdir(parents=True)
+            (root / "lib" / "arm64-v8a" / "libwebrtc.a").write_bytes(b"archive")
+            with self.assertRaisesRegex(VerificationError, "jar/webrtc.jar"):
+                verify_package_layout("android", root)
+            (root / "jar").mkdir()
+            (root / "jar" / "webrtc.jar").write_bytes(b"jar")
+            verify_package_layout("android", root)
+
+    def test_ios_requires_separate_device_and_simulator_libraries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            create_common_tree(root)
+            (root / "lib" / "device-arm64").mkdir(parents=True)
+            (root / "lib" / "device-arm64" / "libwebrtc.a").write_bytes(b"archive")
+            with self.assertRaisesRegex(VerificationError, "simulator-arm64"):
+                verify_package_layout("ios", root)
+
+    def test_macos_requires_both_static_library_and_framework(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            create_common_tree(root)
+            (root / "lib").mkdir()
+            (root / "lib" / "libwebrtc.a").write_bytes(b"archive")
+            with self.assertRaisesRegex(VerificationError, "WebRTC.framework"):
+                verify_package_layout("macos-arm64", root)
+
+
+class FakeRunner:
+    def __init__(self, responses: dict[str, str]) -> None:
+        self.responses = responses
+        self.commands: list[tuple[str, ...]] = []
+
+    def capture(self, argv, *, cwd=None, env=None) -> str:
+        command = tuple(map(str, argv))
+        self.commands.append(command)
+        return self.responses.get(command[0], "")
+
+
+class BinaryVerificationTests(unittest.TestCase):
+    def test_macos_checks_archives_framework_arch_and_codec_symbols(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "lib").mkdir()
+            (root / "lib" / "libwebrtc.a").write_bytes(b"archive")
+            framework = root / "Frameworks" / "WebRTC.framework" / "Versions" / "A"
+            framework.mkdir(parents=True)
+            (framework / "WebRTC").write_bytes(b"framework")
+            runner = FakeRunner(
+                {
+                    "/usr/bin/ar": "peer_connection.o",
+                    "lipo": "arm64",
+                    "nm": "H264EncoderImpl H264DecoderImpl RTCVideoEncoderH265 RTCVideoDecoderH265",
+                }
+            )
+            verify_binaries("macos-arm64", root, runner)
+        self.assertTrue(any(command[0] == "lipo" for command in runner.commands))
+        self.assertTrue(any(command[0] == "nm" for command in runner.commands))
+
+    def test_macos_missing_software_h264_symbol_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "lib").mkdir()
+            (root / "lib" / "libwebrtc.a").write_bytes(b"archive")
+            framework = root / "Frameworks" / "WebRTC.framework"
+            framework.mkdir(parents=True)
+            (framework / "WebRTC").write_bytes(b"framework")
+            runner = FakeRunner(
+                {
+                    "/usr/bin/ar": "peer_connection.o",
+                    "lipo": "arm64",
+                    "nm": "RTCVideoEncoderH265 RTCVideoDecoderH265",
+                }
+            )
+            with self.assertRaisesRegex(VerificationError, "H264EncoderImpl"):
+                verify_binaries("macos-arm64", root, runner)
+
+
+if __name__ == "__main__":
+    unittest.main()

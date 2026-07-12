@@ -34,7 +34,13 @@ class CommandRunnerTests(unittest.TestCase):
         runner = CommandRunner(executor=successful_run, logger=lambda _: None)
         self.assertEqual(runner.capture(["git", "rev-parse", "HEAD"]), "value")
 
+    def test_capture_uses_stderr_for_version_tools(self) -> None:
+        def successful_run(*args, **kwargs):
+            return subprocess.CompletedProcess(args[0], 0, stdout="", stderr="javac 11.0.31\n")
+
+        runner = CommandRunner(executor=successful_run, logger=lambda _: None)
+        self.assertEqual(runner.capture(["javac", "-version"]), "javac 11.0.31")
+
 
 if __name__ == "__main__":
     unittest.main()
-

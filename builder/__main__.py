@@ -6,7 +6,8 @@ from pathlib import Path
 from .build import build_webrtc
 from .commands import CommandRunner
 from .config import TARGETS, get_target
-from .observability import BuildJournal
+from .observability import BuildJournal, collect_toolchain
+from .package import stage_and_package
 from .source import Workspace, prepare_source
 
 
@@ -41,7 +42,20 @@ def main(argv: list[str] | None = None) -> int:
         )
         with journal.phase("source-prepare", target=target.name):
             prepare_source(target, workspace, args.patch_dir.resolve(), runner)
-        build_webrtc(target, workspace, runner, journal)
+        units = build_webrtc(target, workspace, runner, journal)
+        with journal.phase("package", target=target.name):
+            toolchain = collect_toolchain(target.name, runner)
+            archive = stage_and_package(
+                target,
+                workspace,
+                units,
+                args.dist_dir.resolve(),
+                args.patch_dir.resolve(),
+                args.builder_commit,
+                toolchain,
+                runner,
+            )
+        journal.record("build", "completed", target=target.name, artifact=str(archive))
         return 0
     raise AssertionError(f"unhandled command {args.command}")
 

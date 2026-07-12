@@ -41,7 +41,7 @@ class CommandRunner:
         env: Mapping[str, str] | None = None,
     ) -> str:
         result = self._execute(argv, cwd=cwd, env=env, capture=True)
-        return (result.stdout or "").strip()
+        return (result.stdout or result.stderr or "").strip()
 
     def _execute(
         self,
@@ -69,4 +69,3 @@ class CommandRunner:
             detail = (exc.stderr or exc.stdout or "").strip()
             suffix = f": {detail}" if detail else ""
             raise CommandError(f"command failed with status {exc.returncode}: {rendered}{suffix}") from exc
-

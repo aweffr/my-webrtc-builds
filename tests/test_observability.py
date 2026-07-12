@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from builder.observability import BuildJournal
+from builder.observability import BuildJournal, collect_toolchain
 
 
 class BuildJournalTests(unittest.TestCase):
@@ -35,6 +35,29 @@ class BuildJournalTests(unittest.TestCase):
         self.assertEqual(events[-1]["error_type"], "RuntimeError")
         self.assertEqual(events[-1]["error"], "ninja broke")
         self.assertEqual(events[-1]["duration_seconds"], 1.0)
+
+
+class ToolchainObservationTests(unittest.TestCase):
+    def test_platform_specific_toolchain_is_recorded(self) -> None:
+        class VersionRunner:
+            def __init__(self) -> None:
+                self.commands: list[tuple[str, ...]] = []
+
+            def capture(self, argv, *, cwd=None, env=None) -> str:
+                command = tuple(argv)
+                self.commands.append(command)
+                return "version output"
+
+        mac_runner = VersionRunner()
+        mac = collect_toolchain("macos-arm64", mac_runner)
+        self.assertIn("xcode", mac)
+        self.assertIn(("xcodebuild", "-version"), mac_runner.commands)
+
+        android_runner = VersionRunner()
+        android = collect_toolchain("android", android_runner)
+        self.assertIn("java", android)
+        self.assertIn(("javac", "-version"), android_runner.commands)
+        self.assertNotIn("xcode", android)
 
 
 if __name__ == "__main__":

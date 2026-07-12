@@ -9,6 +9,27 @@ from pathlib import Path
 from typing import Any
 
 
+def collect_toolchain(target: str, runner: Any) -> dict[str, str]:
+    commands: dict[str, list[str]] = {
+        "python": ["python3", "--version"],
+        "git": ["git", "--version"],
+        "system": ["uname", "-a"],
+    }
+    if target.startswith("macos") or target == "ios":
+        commands.update(
+            {
+                "xcode": ["xcodebuild", "-version"],
+                "clang": ["clang", "--version"],
+            }
+        )
+    if target == "android":
+        commands["java"] = ["javac", "-version"]
+    return {
+        name: " | ".join(runner.capture(command).splitlines())
+        for name, command in commands.items()
+    }
+
+
 class BuildJournal:
     """Append-only phase journal designed to survive failed Actions jobs."""
 
