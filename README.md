@@ -24,6 +24,71 @@ not run builds on pushes, schedules, or pull requests.
 Static packages also contain resolved GN arguments, `metadata.json`, upstream
 license files, generated third-party `NOTICE`, and `SHA256SUMS`.
 
+## CastTuning runtime tuning
+
+Android and both macOS artifacts include the CastTuning schema `1` shim. iOS
+is intentionally unchanged. After building this release once, normal latency
+experiments change runtime configuration instead of recompiling WebRTC.
+
+Start with [`examples/cast-tuning-detail-idle.json`](examples/cast-tuning-detail-idle.json).
+Profiles are `UPSTREAM`, `DETAIL_IDLE`, `DETAIL_ACTIVE`, `MOTION`, and
+`RECOVERY`. Omitted values preserve upstream behavior; `UPSTREAM` generates no
+Field Trials and calls no tuning setters.
+
+The fixed precedence is upstream defaults → profile → JSON → environment or
+Android Intent → live patch. macOS reads:
+
+```bash
+export CAST_TUNING_CONFIG=/absolute/path/cast-tuning.json
+export CAST_TUNING_PROFILE=DETAIL_ACTIVE
+export CAST_TUNING_OVERRIDES_JSON='{"sender":{"max_fps":20}}'
+```
+
+Use `RTCCastTuningConfiguration`, `RTCCastTuningFactoryBuilder`, and
+`RTCCastTuningController` from the macOS framework. On Android, construct a
+`CastTuningConfig`, pass the controller through `configureFactory` and
+`configurePeerConnection`, attach the receiver, and use the controller's
+decoder factory:
+
+```java
+CastTuningConfig config = CastTuningAndroidConfig.fromIntent(baseJson, intent);
+try (CastTuningController tuning = new CastTuningController(config)) {
+  PeerConnectionFactory.Builder factoryBuilder =
+      tuning.configureFactory(PeerConnectionFactory.builder());
+  tuning.configurePeerConnection(rtcConfiguration);
+  tuning.attachReceiver(videoReceiver);
+  VideoDecoderFactory decoders = tuning.createVideoDecoderFactory(eglContext);
+}
+```
+
+Android Intent extras are `org.webrtc.cast_tuning.PROFILE` and
+`org.webrtc.cast_tuning.OVERRIDES_JSON`.
+
+Changes have three scopes:
+
+- `LIVE`: bitrate bounds, frame constraints, content hint, degradation
+  preference, minimum jitter, and stale-frame policy. A failed multi-setter
+  patch is rolled back atomically; rollback failure requires session rebuild.
+- `SESSION`: start bitrate/BWE reset and encoder or decoder construction values.
+- `FACTORY`: Field Trials, pacer, and recovery advertisement. Build a new
+  factory and session.
+
+The recommended first experiment is NACK+RTX, FEC disabled, zero minimum jitter,
+prerender smoothing disabled, VideoToolbox realtime enabled, and frame
+reordering disabled. Change one variable at a time, retain the effective config
+hash, and compare at least capture/encode, pacer queue, RTT/loss, jitter/decode,
+and render timing. Optional codec properties may fall back with a recorded
+reason; `REQUIRE_HARDWARE` is a hard failure. A telemetry `jsonl_path` enables
+ordered, asynchronous controller events keyed by session ID, hash, and
+revision.
+
+The recovery state machine reports `PLI_REQUESTED`,
+`DECODER_RECREATE_REQUIRED`, and `SENDER_RESET_AND_KEYFRAME_REQUIRED`; the
+embedding application owns the actual action and cross-end signalling. This
+repository does not contain a debug UI, remote-config service, or casting app.
+The full design is in
+[`docs/superpowers/specs/2026-07-12-cast-tuning-shim-design.md`](docs/superpowers/specs/2026-07-12-cast-tuning-shim-design.md).
+
 ## Build and release sequence
 
 All commands below assume `gh auth status` succeeds.

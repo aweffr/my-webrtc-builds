@@ -6,6 +6,7 @@ from pathlib import Path
 
 from builder.build import BuildUnit
 from builder.config import get_target
+from builder.metadata import load_metadata
 from builder.package import (
     PackageError,
     create_tar_gz,
@@ -59,6 +60,22 @@ class ArchiveSafetyTests(unittest.TestCase):
 
 
 class PackageContractTests(unittest.TestCase):
+    def test_cast_tuning_target_requires_overlay_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = Workspace(root / "work")
+            with self.assertRaisesRegex(PackageError, "overlay directory"):
+                stage_and_package(
+                    get_target("android"),
+                    workspace,
+                    (),
+                    root / "dist",
+                    root / "patches",
+                    "a" * 40,
+                    {},
+                    object(),
+                )
+
     def test_fixed_package_filenames(self) -> None:
         self.assertEqual(
             package_filename("android"),
@@ -100,8 +117,18 @@ class PackageContractTests(unittest.TestCase):
                     return "peer_connection.o"
                 if command[:2] == ("jar", "tf"):
                     return (
+                        "org/webrtc/CastTuningAndroidConfig.class\n"
+                        "org/webrtc/CastTuningConfig.class\n"
+                        "org/webrtc/CastTuningController.class\n"
+                        "org/webrtc/CastTuningSnapshot.class\n"
+                        "org/webrtc/CastTuningVideoDecoderFactory.class\n"
                         "org/webrtc/HardwareVideoEncoderFactory.class\n"
                         "org/webrtc/VideoEncoder$CodecSpecificInfoH265.class\n"
+                    )
+                if command[0] == "javap":
+                    return (
+                        "configureFactory configurePeerConnection attachReceiver "
+                        "createVideoDecoderFactory snapshot"
                     )
                 return ""
 
@@ -110,6 +137,9 @@ class PackageContractTests(unittest.TestCase):
             workspace = Workspace(root / "work")
             (workspace.src / "api").mkdir(parents=True)
             (workspace.src / "api" / "peer_connection_interface.h").write_text("header")
+            tuning = workspace.src / "api" / "cast_tuning"
+            tuning.mkdir()
+            (tuning / "cast_tuning_config.h").write_text("header")
             for name in ("LICENSE", "PATENTS", "AUTHORS"):
                 (workspace.src / name).write_text(name)
             output = workspace.out / "android" / "arm64-v8a"
@@ -122,6 +152,11 @@ class PackageContractTests(unittest.TestCase):
             target = get_target("android")
             for name in target.patches:
                 (patch_dir / name).write_text(name)
+            overlay_dir = root / "overlays"
+            for group in target.overlays:
+                source = overlay_dir / group / group / "cast_tuning.h"
+                source.parent.mkdir(parents=True)
+                source.write_text(group)
             unit = BuildUnit("arm64-v8a", output, target.gn_args_for("arm64-v8a"))
 
             runner = LicenseRunner()
@@ -134,6 +169,7 @@ class PackageContractTests(unittest.TestCase):
                 "a" * 40,
                 {"python": "3.11"},
                 runner,
+                overlay_dir=overlay_dir,
             )
             extracted = root / "extracted"
             safe_extract_tar(archive, extracted)
@@ -143,6 +179,11 @@ class PackageContractTests(unittest.TestCase):
             self.assertTrue((package / "metadata.json").is_file())
             self.assertTrue((package / "lib" / "arm64-v8a" / "libwebrtc.a").is_file())
             self.assertTrue((package / "jar" / "webrtc.jar").is_file())
+            metadata = load_metadata(package / "metadata.json")
+            self.assertEqual(
+                set(metadata.overlay_hashes),
+                {"common/cast_tuning.h", "android/cast_tuning.h"},
+            )
             self.assertTrue(
                 any(command[0].endswith("/llvm-ar") for command in runner.capture_commands)
             )

@@ -8,6 +8,9 @@ from builder.verify import VerificationError, verify_binaries, verify_package_la
 def create_common_tree(root: Path) -> None:
     (root / "include" / "api").mkdir(parents=True)
     (root / "include" / "api" / "peer_connection_interface.h").write_text("header")
+    tuning = root / "include" / "api" / "cast_tuning"
+    tuning.mkdir()
+    (tuning / "cast_tuning_config.h").write_text("header")
     for name in ("metadata.json", "LICENSE", "PATENTS", "AUTHORS", "NOTICE", "SHA256SUMS"):
         (root / name).write_text(name)
 
@@ -50,6 +53,17 @@ class PackageLayoutVerificationTests(unittest.TestCase):
             (headers / "RTCVideoDecoderH265.h").write_text("decoder")
             verify_package_layout("macos-arm64", root)
 
+    def test_macos_requires_public_cast_tuning_header(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            create_common_tree(root)
+            (root / "lib").mkdir()
+            (root / "lib" / "libwebrtc.a").write_bytes(b"archive")
+            framework = root / "Frameworks" / "WebRTC.framework"
+            framework.mkdir(parents=True)
+            with self.assertRaisesRegex(VerificationError, "RTCCastTuning.h"):
+                verify_package_layout("macos-arm64", root)
+
 
 class FakeRunner:
     def __init__(self, responses: dict[str, str]) -> None:
@@ -74,8 +88,17 @@ class BinaryVerificationTests(unittest.TestCase):
                 {
                     "/checkout/llvm-ar": "peer_connection.o",
                     "jar": (
+                        "org/webrtc/CastTuningAndroidConfig.class\n"
+                        "org/webrtc/CastTuningConfig.class\n"
+                        "org/webrtc/CastTuningController.class\n"
+                        "org/webrtc/CastTuningSnapshot.class\n"
+                        "org/webrtc/CastTuningVideoDecoderFactory.class\n"
                         "org/webrtc/HardwareVideoEncoderFactory.class\n"
                         "org/webrtc/VideoEncoder$CodecSpecificInfoH265.class\n"
+                    ),
+                    "javap": (
+                        "configureFactory configurePeerConnection attachReceiver "
+                        "createVideoDecoderFactory snapshot"
                     ),
                 }
             )
@@ -86,6 +109,51 @@ class BinaryVerificationTests(unittest.TestCase):
                 android_archiver=Path("/checkout/llvm-ar"),
             )
         self.assertEqual(runner.commands[0][0], "/checkout/llvm-ar")
+
+    def test_android_missing_cast_tuning_class_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "lib" / "arm64-v8a").mkdir(parents=True)
+            (root / "lib" / "arm64-v8a" / "libwebrtc.a").write_bytes(b"archive")
+            (root / "jar").mkdir()
+            (root / "jar" / "webrtc.jar").write_bytes(b"jar")
+            runner = FakeRunner(
+                {
+                    "llvm-ar": "peer_connection.o",
+                    "jar": (
+                        "org/webrtc/HardwareVideoEncoderFactory.class\n"
+                        "org/webrtc/VideoEncoder$CodecSpecificInfoH265.class\n"
+                    ),
+                    "javap": "",
+                }
+            )
+            with self.assertRaisesRegex(VerificationError, "CastTuning"):
+                verify_binaries("android", root, runner)
+
+    def test_android_missing_cast_tuning_method_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "lib" / "arm64-v8a").mkdir(parents=True)
+            (root / "lib" / "arm64-v8a" / "libwebrtc.a").write_bytes(b"archive")
+            (root / "jar").mkdir()
+            (root / "jar" / "webrtc.jar").write_bytes(b"jar")
+            runner = FakeRunner(
+                {
+                    "llvm-ar": "peer_connection.o",
+                    "jar": (
+                        "org/webrtc/CastTuningAndroidConfig.class\n"
+                        "org/webrtc/CastTuningConfig.class\n"
+                        "org/webrtc/CastTuningController.class\n"
+                        "org/webrtc/CastTuningSnapshot.class\n"
+                        "org/webrtc/CastTuningVideoDecoderFactory.class\n"
+                        "org/webrtc/HardwareVideoEncoderFactory.class\n"
+                        "org/webrtc/VideoEncoder$CodecSpecificInfoH265.class\n"
+                    ),
+                    "javap": "configureFactory configurePeerConnection attachReceiver snapshot",
+                }
+            )
+            with self.assertRaisesRegex(VerificationError, "createVideoDecoderFactory"):
+                verify_binaries("android", root, runner)
 
     def test_macos_checks_archives_framework_arch_and_codec_symbols(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -99,7 +167,10 @@ class BinaryVerificationTests(unittest.TestCase):
                 {
                     "/usr/bin/ar": "peer_connection.o",
                     "lipo": "arm64",
-                    "nm": "H264EncoderImpl H264DecoderImpl RTCVideoEncoderH265 RTCVideoDecoderH265",
+                    "nm": (
+                        "H264EncoderImpl H264DecoderImpl RTCVideoEncoderH265 "
+                        "RTCVideoDecoderH265 RTCCastTuningController"
+                    ),
                 }
             )
             verify_binaries("macos-arm64", root, runner)
@@ -122,6 +193,27 @@ class BinaryVerificationTests(unittest.TestCase):
                 }
             )
             with self.assertRaisesRegex(VerificationError, "H264EncoderImpl"):
+                verify_binaries("macos-arm64", root, runner)
+
+    def test_macos_missing_cast_tuning_symbol_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "lib").mkdir()
+            (root / "lib" / "libwebrtc.a").write_bytes(b"archive")
+            framework = root / "Frameworks" / "WebRTC.framework"
+            framework.mkdir(parents=True)
+            (framework / "WebRTC").write_bytes(b"framework")
+            runner = FakeRunner(
+                {
+                    "/usr/bin/ar": "peer_connection.o",
+                    "lipo": "arm64",
+                    "nm": (
+                        "H264EncoderImpl H264DecoderImpl RTCVideoEncoderH265 "
+                        "RTCVideoDecoderH265"
+                    ),
+                }
+            )
+            with self.assertRaisesRegex(VerificationError, "RTCCastTuningController"):
                 verify_binaries("macos-arm64", root, runner)
 
 
