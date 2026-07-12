@@ -4,7 +4,13 @@ from pathlib import Path
 
 from builder.build import BuildError, _archive_objects, build_units, build_webrtc
 from builder.config import SOURCE_VERSION, get_target
-from builder.source import DEPOT_TOOLS_COMMIT, Workspace, prepare_source
+from builder.source import (
+    DEPOT_TOOLS_COMMIT,
+    Workspace,
+    apply_overlays,
+    overlay_manifest,
+    prepare_source,
+)
 
 
 class FakeRunner:
@@ -47,6 +53,34 @@ class SourcePreparationTests(unittest.TestCase):
             environment = Workspace(Path(directory)).environment()
         self.assertEqual(environment.get("DEPOT_TOOLS_UPDATE"), "0")
 
+    def test_overlay_manifest_is_deterministic_and_apply_rejects_collisions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            overlay = root / "overlays"
+            common_header = overlay / "common" / "api" / "cast_tuning" / "config.h"
+            android_source = overlay / "android" / "sdk" / "android" / "CastTuning.java"
+            common_header.parent.mkdir(parents=True)
+            android_source.parent.mkdir(parents=True)
+            common_header.write_text("common")
+            android_source.write_text("android")
+            workspace = Workspace(root / "work")
+            workspace.src.mkdir(parents=True)
+
+            manifest = overlay_manifest(get_target("android"), overlay)
+            self.assertEqual(
+                set(manifest),
+                {"api/cast_tuning/config.h", "sdk/android/CastTuning.java"},
+            )
+            self.assertTrue(all(len(digest) == 64 for digest in manifest.values()))
+
+            apply_overlays(get_target("android"), workspace, overlay)
+            self.assertEqual(
+                (workspace.src / "api" / "cast_tuning" / "config.h").read_text(),
+                "common",
+            )
+            with self.assertRaisesRegex(BuildError, "overlay destination already exists"):
+                apply_overlays(get_target("android"), workspace, overlay)
+
     def test_source_is_pinned_and_patches_are_checked_before_application(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -57,9 +91,16 @@ class SourcePreparationTests(unittest.TestCase):
             patch_dir.mkdir()
             for name in get_target("android").patches:
                 (patch_dir / name).write_text("diff --git a/a b/a\n")
+            overlay_dir = root / "overlays"
+            for group in get_target("android").overlays:
+                source = overlay_dir / group / group / "placeholder.h"
+                source.parent.mkdir(parents=True)
+                source.write_text(group)
             runner = FakeRunner()
 
-            prepare_source(get_target("android"), workspace, patch_dir, runner)
+            prepare_source(
+                get_target("android"), workspace, patch_dir, runner, overlay_dir
+            )
 
             commands = [call[1] for call in runner.calls]
             checkout = ("git", "checkout", "--detach", SOURCE_VERSION.commit)
@@ -73,6 +114,8 @@ class SourcePreparationTests(unittest.TestCase):
                 apply_index = commands.index(("git", "apply", patch_path))
                 self.assertGreater(check_index, sync_index)
                 self.assertLess(check_index, apply_index)
+            for group in get_target("android").overlays:
+                self.assertTrue((workspace.src / group / "placeholder.h").is_file())
 
     def test_unexpected_checkout_commit_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -84,12 +127,18 @@ class SourcePreparationTests(unittest.TestCase):
             patch_dir.mkdir()
             for name in get_target("android").patches:
                 (patch_dir / name).write_text("patch")
+            overlay_dir = root / "overlays"
+            for group in get_target("android").overlays:
+                source = overlay_dir / group / group / "placeholder.h"
+                source.parent.mkdir(parents=True)
+                source.write_text(group)
             with self.assertRaisesRegex(BuildError, "unexpected WebRTC commit"):
                 prepare_source(
                     get_target("android"),
                     workspace,
                     patch_dir,
                     FakeRunner(commit="b" * 40),
+                    overlay_dir,
                 )
 
 
@@ -157,6 +206,27 @@ class BuildPlanTests(unittest.TestCase):
         self.assertLess(gn_index, ninja_index)
         self.assertIn("sdk:mac_framework_objc", commands[ninja_index])
         self.assertIn('target_cpu="arm64"', commands[gn_index][-1])
+        archive_index = next(
+            i for i, command in enumerate(commands) if len(command) > 1 and command[1] == "rcs"
+        )
+        validation_index = next(
+            i
+            for i, command in enumerate(commands)
+            if command[0] == "ninja"
+            and "api/cast_tuning:cast_tuning_native_tests" in command
+        )
+        execute_index = commands.index(
+            (
+                str(
+                    workspace.out
+                    / "macos-arm64"
+                    / "arm64"
+                    / "cast_tuning_native_tests"
+                ),
+            )
+        )
+        self.assertLess(archive_index, validation_index)
+        self.assertLess(validation_index, execute_index)
 
     def test_missing_object_files_fails_instead_of_publishing_empty_library(self) -> None:
         class NoOutputRunner(FakeRunner):

@@ -109,4 +109,32 @@ def build_webrtc(
         )
         with phase:
             _archive_objects(target, workspace, unit, runner)
+        if target.validation_targets:
+            phase = (
+                journal.phase(
+                    "cast-tuning-validation-build",
+                    target=target.name,
+                    architecture=unit.architecture,
+                )
+                if journal
+                else nullcontext()
+            )
+            with phase:
+                runner.run(
+                    ["ninja", "-C", unit.output_dir, *target.validation_targets],
+                    cwd=workspace.src,
+                    env=environment,
+                )
+            if target.name.startswith("macos"):
+                phase = (
+                    journal.phase(
+                        "cast-tuning-validation-run",
+                        target=target.name,
+                        architecture=unit.architecture,
+                    )
+                    if journal
+                    else nullcontext()
+                )
+                with phase:
+                    runner.run([unit.output_dir / "cast_tuning_native_tests"])
     return units

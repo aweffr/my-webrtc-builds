@@ -1,0 +1,40 @@
+import("//webrtc.gni")
+
+rtc_library("cast_tuning") {
+  visibility = [ "*" ]
+  sources = [
+    "cast_tuning_config.cc",
+    "cast_tuning_config.h",
+    "cast_tuning_controller.cc",
+    "cast_tuning_controller.h",
+    "cast_tuning_json.cc",
+    "cast_tuning_recovery.cc",
+    "cast_tuning_recovery.h",
+    "cast_tuning_telemetry.cc",
+    "cast_tuning_telemetry.h",
+    "webrtc_cast_tuning_backend.cc",
+    "webrtc_cast_tuning_backend.h",
+  ]
+  deps = [
+    "..:media_stream_interface",
+    "..:peer_connection_interface",
+    "..:rtc_error",
+    "..:rtp_parameters",
+    "..:rtp_receiver_interface",
+    "..:rtp_sender_interface",
+    "..:scoped_refptr",
+    "../transport:bitrate_settings",
+    "../../rtc_base:logging",
+    "../../rtc_base:rtc_json",
+  ]
+}
+
+rtc_executable("cast_tuning_native_tests") {
+  testonly = true
+  defines = [ "CAST_TUNING_WITH_JSON_TESTS" ]
+  sources = [
+    "cast_tuning_config_unittest.cc",
+    "cast_tuning_json_contract_test.cc",
+  ]
+  deps = [ ":cast_tuning" ]
+}

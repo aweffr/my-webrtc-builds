@@ -55,7 +55,9 @@ class TargetConfig:
     architectures: tuple[str, ...]
     deployment_target: str | None
     patches: tuple[str, ...]
+    overlays: tuple[str, ...]
     ninja_targets: tuple[str, ...]
+    validation_targets: tuple[str, ...]
 
     def gn_args_for(self, architecture: str) -> tuple[str, ...]:
         if architecture not in self.architectures:
@@ -123,7 +125,13 @@ TARGETS: Mapping[str, TargetConfig] = MappingProxyType(
             runner="ubuntu-24.04",
             architectures=("arm64-v8a",),
             deployment_target=None,
-            patches=("add_deps.patch", "h265.patch", "h265_android.patch"),
+            patches=(
+                "add_deps.patch",
+                "h265.patch",
+                "h265_android.patch",
+                "cast_tuning_hooks.patch",
+            ),
+            overlays=("common", "android"),
             ninja_targets=(
                 ":default",
                 "buildtools/third_party/libc++",
@@ -131,6 +139,7 @@ TARGETS: Mapping[str, TargetConfig] = MappingProxyType(
                 "sdk/android:libjingle_peerconnection_so",
                 "sdk/android:native_api",
             ),
+            validation_targets=("api/cast_tuning:cast_tuning_native_tests",),
         ),
         "ios": TargetConfig(
             name="ios",
@@ -138,7 +147,9 @@ TARGETS: Mapping[str, TargetConfig] = MappingProxyType(
             architectures=("device:arm64", "simulator:arm64"),
             deployment_target="14.0",
             patches=("add_deps.patch", "h265.patch", "h265_ios.patch"),
+            overlays=(),
             ninja_targets=_APPLE_TARGETS + ("sdk:framework_objc",),
+            validation_targets=(),
         ),
         "macos-x64": TargetConfig(
             name="macos-x64",
@@ -151,8 +162,11 @@ TARGETS: Mapping[str, TargetConfig] = MappingProxyType(
                 "h265_ios.patch",
                 "macos_h265_framework.patch",
                 "codec_licenses.patch",
+                "cast_tuning_hooks.patch",
             ),
+            overlays=("common", "macos"),
             ninja_targets=_APPLE_TARGETS + ("sdk:mac_framework_objc",),
+            validation_targets=("api/cast_tuning:cast_tuning_native_tests",),
         ),
         "macos-arm64": TargetConfig(
             name="macos-arm64",
@@ -165,8 +179,11 @@ TARGETS: Mapping[str, TargetConfig] = MappingProxyType(
                 "h265_ios.patch",
                 "macos_h265_framework.patch",
                 "codec_licenses.patch",
+                "cast_tuning_hooks.patch",
             ),
+            overlays=("common", "macos"),
             ninja_targets=_APPLE_TARGETS + ("sdk:mac_framework_objc",),
+            validation_targets=("api/cast_tuning:cast_tuning_native_tests",),
         ),
     }
 )

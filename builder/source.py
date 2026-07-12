@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -52,6 +54,51 @@ class Workspace:
         return environment
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _overlay_sources(
+    target: TargetConfig, overlay_dir: Path
+) -> tuple[tuple[Path, Path], ...]:
+    sources: list[tuple[Path, Path]] = []
+    destinations: set[Path] = set()
+    for group in target.overlays:
+        root = overlay_dir / group
+        if not root.is_dir():
+            raise BuildError(f"required overlay group is missing: {root}")
+        files = sorted(path for path in root.rglob("*") if path.is_file())
+        if not files:
+            raise BuildError(f"overlay group contains no files: {root}")
+        for source in files:
+            relative = source.relative_to(root)
+            if relative in destinations:
+                raise BuildError(f"duplicate overlay destination: {relative.as_posix()}")
+            destinations.add(relative)
+            sources.append((source, relative))
+    return tuple(sources)
+
+
+def overlay_manifest(target: TargetConfig, overlay_dir: Path) -> dict[str, str]:
+    return {
+        relative.as_posix(): _sha256(source)
+        for source, relative in _overlay_sources(target, overlay_dir)
+    }
+
+
+def apply_overlays(target: TargetConfig, workspace: Workspace, overlay_dir: Path) -> None:
+    for source, relative in _overlay_sources(target, overlay_dir):
+        destination = workspace.src / relative
+        if destination.exists() or destination.is_symlink():
+            raise BuildError(f"overlay destination already exists: {relative.as_posix()}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+
 def _configure_target_os(target: TargetConfig, gclient_path: Path) -> None:
     if target.name == "android":
         target_os = "android"
@@ -70,6 +117,7 @@ def prepare_source(
     workspace: Workspace,
     patch_dir: Path,
     runner: Runner,
+    overlay_dir: Path | None = None,
 ) -> None:
     workspace.root.mkdir(parents=True, exist_ok=True)
     environment = workspace.environment()
@@ -155,3 +203,7 @@ def prepare_source(
             env=environment,
         )
         runner.run(["git", "apply", patch_path], cwd=workspace.src, env=environment)
+    if target.overlays:
+        if overlay_dir is None:
+            raise BuildError(f"target {target.name} requires an overlay directory")
+        apply_overlays(target, workspace, overlay_dir)

@@ -25,6 +25,11 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path(__file__).resolve().parents[1] / "patches" / "m150",
     )
+    build.add_argument(
+        "--overlay-dir",
+        type=Path,
+        default=Path(__file__).resolve().parents[1] / "overlays" / "m150",
+    )
     merge = subparsers.add_parser("merge-macos", help="compose thin macOS packages")
     merge.add_argument("--x64-package", required=True, type=Path)
     merge.add_argument("--arm64-package", required=True, type=Path)
@@ -59,7 +64,13 @@ def main(argv: list[str] | None = None) -> int:
             depot_tools_commit=DEPOT_TOOLS_COMMIT,
         )
         with journal.phase("source-prepare", target=target.name):
-            prepare_source(target, workspace, args.patch_dir.resolve(), runner)
+            prepare_source(
+                target,
+                workspace,
+                args.patch_dir.resolve(),
+                runner,
+                args.overlay_dir.resolve(),
+            )
         units = build_webrtc(target, workspace, runner, journal)
         with journal.phase("package", target=target.name):
             toolchain = collect_toolchain(target.name, runner)
@@ -73,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.builder_commit,
                 toolchain,
                 runner,
+                overlay_dir=args.overlay_dir.resolve(),
             )
         journal.record("build", "completed", target=target.name, artifact=str(archive))
         return 0

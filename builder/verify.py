@@ -26,7 +26,13 @@ COMMON_REQUIRED_PATHS = (
 def verify_package_layout(target: str, root: Path) -> None:
     required = list(COMMON_REQUIRED_PATHS)
     if target == "android":
-        required.extend(("lib/arm64-v8a/libwebrtc.a", "jar/webrtc.jar"))
+        required.extend(
+            (
+                "lib/arm64-v8a/libwebrtc.a",
+                "jar/webrtc.jar",
+                "include/api/cast_tuning/cast_tuning_config.h",
+            )
+        )
     elif target == "ios":
         required.extend(
             (
@@ -41,6 +47,8 @@ def verify_package_layout(target: str, root: Path) -> None:
                 "Frameworks/WebRTC.framework",
                 "Frameworks/WebRTC.framework/Headers/RTCVideoEncoderH265.h",
                 "Frameworks/WebRTC.framework/Headers/RTCVideoDecoderH265.h",
+                "include/api/cast_tuning/cast_tuning_config.h",
+                "Frameworks/WebRTC.framework/Headers/RTCCastTuning.h",
             )
         )
     else:
@@ -99,11 +107,35 @@ def verify_binaries(
         _expect_archive_members(runner, str(android_archiver), library)
         jar_entries = runner.capture(["jar", "tf", root / "jar" / "webrtc.jar"])
         for entry in (
+            "org/webrtc/CastTuningAndroidConfig.class",
+            "org/webrtc/CastTuningConfig.class",
+            "org/webrtc/CastTuningController.class",
+            "org/webrtc/CastTuningSnapshot.class",
+            "org/webrtc/CastTuningVideoDecoderFactory.class",
             "org/webrtc/HardwareVideoEncoderFactory.class",
             "org/webrtc/VideoEncoder$CodecSpecificInfoH265.class",
         ):
             if entry not in jar_entries:
                 raise VerificationError(f"required Android codec class is missing: {entry}")
+        cast_api = runner.capture(
+            [
+                "javap",
+                "-classpath",
+                root / "jar" / "webrtc.jar",
+                "org.webrtc.CastTuningController",
+            ]
+        )
+        for method in (
+            "configureFactory",
+            "configurePeerConnection",
+            "attachReceiver",
+            "createVideoDecoderFactory",
+            "snapshot",
+        ):
+            if method not in cast_api:
+                raise VerificationError(
+                    f"required Android CastTuning method is missing: {method}"
+                )
         return
 
     if target == "ios":
@@ -129,7 +161,11 @@ def verify_binaries(
         _expect_symbols(
             runner,
             framework_binary,
-            ("RTCVideoEncoderH265", "RTCVideoDecoderH265"),
+            (
+                "RTCVideoEncoderH265",
+                "RTCVideoDecoderH265",
+                "RTCCastTuningController",
+            ),
         )
         return
     raise VerificationError(f"unsupported binary verification target {target!r}")

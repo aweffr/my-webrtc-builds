@@ -10,7 +10,7 @@ from pathlib import Path, PurePosixPath
 from .build import BuildUnit
 from .config import TargetConfig
 from .metadata import BuildMetadata, save_metadata
-from .source import Runner, Workspace
+from .source import Runner, Workspace, overlay_manifest
 
 
 class PackageError(RuntimeError):
@@ -152,7 +152,11 @@ def stage_and_package(
     builder_commit: str,
     toolchain: dict[str, str],
     runner: Runner,
+    *,
+    overlay_dir: Path | None = None,
 ) -> Path:
+    if target.overlays and overlay_dir is None:
+        raise PackageError(f"target {target.name} requires an overlay directory")
     stage = workspace.stage / target.name / "webrtc"
     shutil.rmtree(stage.parent, ignore_errors=True)
     stage.mkdir(parents=True)
@@ -193,6 +197,12 @@ def stage_and_package(
         patch_hashes=_patch_hashes(target, patch_dir),
         gn_args={unit.architecture: unit.gn_args for unit in units},
         toolchain=toolchain,
+        overlay_hashes=(
+            overlay_manifest(target, overlay_dir)
+            if target.overlays and overlay_dir is not None
+            else {}
+        ),
+        tuning_schema_version=1,
     )
     save_metadata(stage / "metadata.json", metadata)
     write_checksums(stage)
