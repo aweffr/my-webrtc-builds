@@ -138,7 +138,9 @@ class BinaryVerificationTests(unittest.TestCase):
                 runner,
                 android_archiver=Path("/checkout/llvm-ar"),
             )
-        self.assertEqual(runner.commands[0][0], "/checkout/llvm-ar")
+        self.assertEqual(
+            runner.commands[0][0].replace("\\", "/"), "/checkout/llvm-ar"
+        )
 
     def test_android_missing_cast_tuning_class_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
