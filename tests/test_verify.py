@@ -51,6 +51,9 @@ class PackageLayoutVerificationTests(unittest.TestCase):
                 verify_package_layout("macos-arm64", root)
             (headers / "RTCVideoEncoderH265.h").write_text("encoder")
             (headers / "RTCVideoDecoderH265.h").write_text("decoder")
+            with self.assertRaisesRegex(VerificationError, "RTCCastTuning.h"):
+                verify_package_layout("macos-arm64", root)
+            (headers / "RTCCastTuning.h").write_text("cast tuning")
             verify_package_layout("macos-arm64", root)
 
     def test_macos_requires_public_cast_tuning_header(self) -> None:
@@ -61,6 +64,10 @@ class PackageLayoutVerificationTests(unittest.TestCase):
             (root / "lib" / "libwebrtc.a").write_bytes(b"archive")
             framework = root / "Frameworks" / "WebRTC.framework"
             framework.mkdir(parents=True)
+            headers = framework / "Headers"
+            headers.mkdir()
+            (headers / "RTCVideoEncoderH265.h").write_text("encoder")
+            (headers / "RTCVideoDecoderH265.h").write_text("decoder")
             with self.assertRaisesRegex(VerificationError, "RTCCastTuning.h"):
                 verify_package_layout("macos-arm64", root)
 

@@ -207,7 +207,7 @@ class BuildPlanTests(unittest.TestCase):
         self.assertIn("sdk:mac_framework_objc", commands[ninja_index])
         self.assertIn('target_cpu="arm64"', commands[gn_index][-1])
         archive_index = next(
-            i for i, command in enumerate(commands) if command[:2] == ("/usr/bin/ar", "-rcs")
+            i for i, command in enumerate(commands) if len(command) > 1 and command[1] == "rcs"
         )
         validation_index = next(
             i
