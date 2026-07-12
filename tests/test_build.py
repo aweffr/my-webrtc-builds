@@ -30,6 +30,11 @@ class FakeRunner:
 
 
 class SourcePreparationTests(unittest.TestCase):
+    def test_depot_tools_first_run_bootstrap_is_not_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            environment = Workspace(Path(directory)).environment()
+        self.assertIsNone(environment.get("DEPOT_TOOLS_UPDATE"))
+
     def test_source_is_pinned_and_patches_are_checked_before_application(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

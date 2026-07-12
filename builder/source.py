@@ -45,7 +45,7 @@ class Workspace:
     def environment(self) -> dict[str, str]:
         environment = dict(os.environ)
         environment["PATH"] = f"{self.depot_tools}{os.pathsep}{environment.get('PATH', '')}"
-        environment["DEPOT_TOOLS_UPDATE"] = "0"
+        environment.pop("DEPOT_TOOLS_UPDATE", None)
         return environment
 
 
