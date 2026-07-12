@@ -146,4 +146,5 @@
 
 ## Execution findings
 
-No execution findings have been recorded yet.
+- 2026-07-12: The user explicitly required hosted-build observability. The implementation therefore persists phase timing/failure events, tees complete build logs, records runner/toolchain/disk/source/GN diagnostics, uploads diagnostics artifacts under `if: always()`, and links them from each Step Summary. Command logs deliberately omit environment mappings and secrets.
+- 2026-07-12: `actionlint` rejects `runner.temp` in job-level `env`; workflow workspaces use the ignored `${{ github.workspace }}/build-workspace*` directories instead. This remains ephemeral and uses the same hosted-runner disk.

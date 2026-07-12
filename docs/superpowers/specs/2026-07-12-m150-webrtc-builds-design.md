@@ -89,6 +89,10 @@ Unit tests protect target configuration, metadata construction and validation, a
 
 The initial delivery is complete only after all four hosted-runner builds succeed, the universal XCFramework is produced, and GitHub Release `m150.7871.3-r1` is published and downloaded for checksum verification.
 
+## Observability
+
+Every long-running phase writes both human-readable logs and an append-only JSONL journal containing target, architecture, phase state, duration, and sanitized failure information. Workflows preserve the complete builder output with `tee` and upload diagnostics on both success and failure. Diagnostics include runner/toolchain identity, disk snapshots, source commit/status, resolved GN arguments, and output inventories. Actions Step Summaries point directly to the failing phase and diagnostics artifact; command logging never serializes environment variables or tokens.
+
 ## Licensing
 
 The repository uses Apache-2.0 for its own code and preserves the license of every vendored patch. Distributed packages carry WebRTC and generated third-party notices. The user has confirmed that their company has the required H.264/H.265 licenses, so bundled macOS OpenH264 distribution is an accepted product decision.
