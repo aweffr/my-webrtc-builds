@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .build import build_webrtc
 from .commands import CommandRunner
+from .compose import compose_macos_xcframework, create_release_manifest
 from .config import TARGETS, get_target
 from .observability import BuildJournal, collect_toolchain
 from .package import stage_and_package
@@ -24,6 +25,19 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path(__file__).resolve().parents[1] / "patches" / "m150",
     )
+    merge = subparsers.add_parser("merge-macos", help="compose thin macOS packages")
+    merge.add_argument("--x64-package", required=True, type=Path)
+    merge.add_argument("--arm64-package", required=True, type=Path)
+    merge.add_argument("--work-dir", required=True, type=Path)
+    merge.add_argument("--dist-dir", required=True, type=Path)
+
+    release = subparsers.add_parser("release-manifest", help="validate and compose release data")
+    release.add_argument("--revision", required=True, type=int)
+    for target in ("android", "ios", "macos-x64", "macos-arm64"):
+        release.add_argument(f"--{target}-package", required=True, type=Path)
+    release.add_argument("--xcframework", required=True, type=Path)
+    release.add_argument("--xcframework-metadata", required=True, type=Path)
+    release.add_argument("--output-dir", required=True, type=Path)
     return parser
 
 
@@ -56,6 +70,40 @@ def main(argv: list[str] | None = None) -> int:
                 runner,
             )
         journal.record("build", "completed", target=target.name, artifact=str(archive))
+        return 0
+    if args.command == "merge-macos":
+        work_dir = args.work_dir.resolve()
+        journal = BuildJournal(work_dir / "diagnostics" / "build-events.jsonl")
+        runner = CommandRunner(logger=journal.log)
+        with journal.phase("macos-xcframework"):
+            archive, metadata = compose_macos_xcframework(
+                x64_archive=args.x64_package.resolve(),
+                arm64_archive=args.arm64_package.resolve(),
+                work_dir=work_dir,
+                output_dir=args.dist_dir.resolve(),
+                runner=runner,
+            )
+        journal.record(
+            "macos-xcframework",
+            "completed",
+            artifact=str(archive),
+            metadata=str(metadata),
+        )
+        return 0
+    if args.command == "release-manifest":
+        manifest = create_release_manifest(
+            revision=args.revision,
+            packages={
+                "android": args.android_package.resolve(),
+                "ios": args.ios_package.resolve(),
+                "macos-x64": args.macos_x64_package.resolve(),
+                "macos-arm64": args.macos_arm64_package.resolve(),
+            },
+            xcframework=args.xcframework.resolve(),
+            xcframework_metadata=args.xcframework_metadata.resolve(),
+            output_dir=args.output_dir.resolve(),
+        )
+        print(manifest)
         return 0
     raise AssertionError(f"unhandled command {args.command}")
 
