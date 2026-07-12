@@ -11,6 +11,10 @@ on:
         description: Successful Build macOS arm64 run ID
         required: true
         type: string
+      builder_commit:
+        description: Full commit SHA recorded in both thin package metadata files
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -75,7 +79,7 @@ jobs:
             --arm64-package inputs/arm64/webrtc-m150-macos-arm64.tar.gz \
             --work-dir "$WORK_DIR" \
             --dist-dir "$DIST_DIR" \
-            --builder-commit "$GITHUB_SHA" \
+            --builder-commit "${{ inputs.builder_commit }}" \
             2>&1 | tee "$DIAGNOSTICS_DIR/compose.log"
 
       - name: Upload XCFramework package
@@ -103,6 +107,8 @@ jobs:
             echo
             echo "- x64 run: \`${{ inputs.x64_run_id }}\`"
             echo "- arm64 run: \`${{ inputs.arm64_run_id }}\`"
+            echo "- Artifact builder commit: \`${{ inputs.builder_commit }}\`"
+            echo "- Composer workflow commit: \`$GITHUB_SHA\`"
             echo "- Outcome: \`${{ steps.compose.outcome }}\`"
             echo "- Diagnostics artifact: \`WebRTC-m150-macos-universal-xcframework-diagnostics\`"
             if [ -f "$WORK_DIR/diagnostics/build-events.jsonl" ]; then

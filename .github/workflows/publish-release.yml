@@ -23,6 +23,10 @@ on:
         description: Successful Package macOS XCFramework run ID
         required: true
         type: string
+      builder_commit:
+        description: Full commit SHA recorded in all input package metadata
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -114,7 +118,7 @@ jobs:
             --xcframework inputs/xcframework/WebRTC-m150-macos-universal.xcframework.zip \
             --xcframework-metadata inputs/xcframework/xcframework-metadata.json \
             --output-dir "$RELEASE_DIR" \
-            --builder-commit "$GITHUB_SHA" \
+            --builder-commit "${{ inputs.builder_commit }}" \
             --release-date "$RELEASE_DATE" \
             --platform all \
             2>&1 | tee "$DIAGNOSTICS_DIR/release-validation.log"
@@ -143,7 +147,7 @@ jobs:
             --target "${{ steps.manifest.outputs.builder_commit }}" \
             --draft \
             --title "$TAG" \
-            --notes "Pinned WebRTC branch-heads/7871@{#3}, commit 1f975dfd761af6e5d76d28333191973b258d82a8." \
+            --notes "Pinned WebRTC branch-heads/7871@{#3}, commit 1f975dfd761af6e5d76d28333191973b258d82a8. Artifact builder commit: ${{ inputs.builder_commit }}. Composer/release workflow commit: ${GITHUB_SHA}." \
             inputs/android/webrtc-m150-android-arm64-v8a.tar.gz \
             inputs/ios/webrtc-m150-ios.tar.gz \
             inputs/macos-x64/webrtc-m150-macos-x64.tar.gz \
@@ -166,6 +170,8 @@ jobs:
             echo "- Manifest validation: \`${{ steps.manifest.outcome }}\`"
             echo "- Publish: \`${{ steps.publish.outcome }}\`"
             echo "- Tag: \`${{ steps.manifest.outputs.tag }}\`"
+            echo "- Artifact builder commit: \`${{ inputs.builder_commit }}\`"
+            echo "- Composer/release workflow commit: \`$GITHUB_SHA\`"
             echo "- Diagnostics artifact: \`webrtc-m150-release-diagnostics\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
