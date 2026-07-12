@@ -52,7 +52,6 @@ def prepare_macos_inputs(
             )
         validate_compatible(
             (x64_metadata, arm64_metadata),
-            require_same_headers=True,
             require_same_patches=True,
         )
     except MetadataError as exc:

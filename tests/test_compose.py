@@ -27,7 +27,12 @@ def build_metadata(target: str, *, builder_commit: str = "a" * 40) -> BuildMetad
     )
 
 
-def create_package(directory: Path, target: str, metadata: BuildMetadata | None = None) -> Path:
+def create_package(
+    directory: Path,
+    target: str,
+    metadata: BuildMetadata | None = None,
+    framework_header: str = "header",
+) -> Path:
     root = directory / f"stage-{target}" / "webrtc"
     root.mkdir(parents=True)
     save_metadata(root / "metadata.json", metadata or build_metadata(target))
@@ -40,7 +45,7 @@ def create_package(directory: Path, target: str, metadata: BuildMetadata | None 
         framework.mkdir(parents=True)
         (framework / "WebRTC").write_bytes(target.encode())
         (framework / "Headers").mkdir()
-        (framework / "Headers" / "WebRTC.h").write_text("header")
+        (framework / "Headers" / "WebRTC.h").write_text(framework_header)
     archive = directory / package_filename(target)
     create_tar_gz(root, archive, arcname="webrtc")
     return archive
@@ -129,14 +134,29 @@ class MacOSInputTests(unittest.TestCase):
                     runner=object(),
                 )
 
-    def test_mixed_headers_or_apple_patch_set_is_rejected(self) -> None:
+    def test_platform_generated_header_metadata_can_differ(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             x64 = create_package(root, "macos-x64")
             changed = replace(build_metadata("macos-arm64"), header_manifest="different")
             arm64 = create_package(root, "macos-arm64", changed)
-            with self.assertRaisesRegex(CompositionError, "header manifest"):
-                prepare_macos_inputs(x64, arm64, root / "extract")
+            inputs = prepare_macos_inputs(x64, arm64, root / "extract")
+        self.assertEqual(inputs.arm64_metadata.header_manifest, "different")
+
+    def test_composition_rejects_different_framework_headers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            x64 = create_package(root, "macos-x64", framework_header="x64")
+            arm64 = create_package(root, "macos-arm64", framework_header="arm64")
+            with self.assertRaisesRegex(CompositionError, "different public headers"):
+                compose_macos_xcframework(
+                    x64_archive=x64,
+                    arm64_archive=arm64,
+                    work_dir=root / "work",
+                    output_dir=root / "dist",
+                    builder_commit="a" * 40,
+                    runner=object(),
+                )
 
 
 class ReleaseManifestTests(unittest.TestCase):
