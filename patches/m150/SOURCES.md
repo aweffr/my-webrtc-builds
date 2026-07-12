@@ -30,3 +30,11 @@ umbrella header.
 | `h265_ios.patch` | `13cb55f38774a6312ca0b965779f8c48e581d23ae31680e813f7418966c5482a` |
 | `codec_licenses.patch` | `96766489dd4f6fb5cf2db77befcf53863c7a5431c5995d6658ff846a78baf71b` |
 | `macos_h265_framework.patch` | `948a39aad68e4d579bb948ca05fcbcdf40bbe1bfccb4f42419754982fe870ff4` |
+
+`cast_tuning_hooks.patch` is authored by this project under Apache-2.0. It
+contains only the M150 GN wiring and source hooks required by the versioned
+`overlays/m150` CastTuning shim.
+
+| Project patch | SHA-256 |
+| --- | --- |
+| `cast_tuning_hooks.patch` | `5c5bbdfb1ccff2886afb824c8a7438356d8f36de78cf88e1a362bd5888e1b5ec` |

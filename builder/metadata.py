@@ -11,7 +11,7 @@ from typing import Any, Iterable, Mapping
 from .config import SOURCE_VERSION, TargetConfig, get_target
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class MetadataError(ValueError):
@@ -47,6 +47,8 @@ class BuildMetadata:
     patch_hashes: Mapping[str, str]
     gn_args: Mapping[str, tuple[str, ...]]
     toolchain: Mapping[str, str]
+    overlay_hashes: Mapping[str, str]
+    tuning_schema_version: int
 
     @classmethod
     def create(
@@ -58,6 +60,8 @@ class BuildMetadata:
         patch_hashes: Mapping[str, str],
         gn_args: Mapping[str, tuple[str, ...]],
         toolchain: Mapping[str, str],
+        overlay_hashes: Mapping[str, str] | None = None,
+        tuning_schema_version: int = 1,
     ) -> BuildMetadata:
         config = get_target(target)
         return cls(
@@ -70,6 +74,8 @@ class BuildMetadata:
             patch_hashes=dict(sorted(patch_hashes.items())),
             gn_args={key: tuple(value) for key, value in sorted(gn_args.items())},
             toolchain=dict(sorted(toolchain.items())),
+            overlay_hashes=dict(sorted((overlay_hashes or {}).items())),
+            tuning_schema_version=tuning_schema_version,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -83,6 +89,8 @@ class BuildMetadata:
             "patch_hashes": dict(self.patch_hashes),
             "gn_args": {key: list(value) for key, value in self.gn_args.items()},
             "toolchain": dict(self.toolchain),
+            "overlay_hashes": dict(self.overlay_hashes),
+            "tuning_schema_version": self.tuning_schema_version,
         }
 
     @classmethod
@@ -114,12 +122,18 @@ class BuildMetadata:
         patch_hashes = payload.get("patch_hashes")
         gn_args = payload.get("gn_args")
         toolchain = payload.get("toolchain")
+        overlay_hashes = payload.get("overlay_hashes")
+        tuning_schema_version = payload.get("tuning_schema_version")
         if not isinstance(patch_hashes, dict):
             raise MetadataError("metadata patch_hashes must be an object")
         if not isinstance(gn_args, dict):
             raise MetadataError("metadata gn_args must be an object")
         if not isinstance(toolchain, dict):
             raise MetadataError("metadata toolchain must be an object")
+        if not isinstance(overlay_hashes, dict):
+            raise MetadataError("metadata overlay_hashes must be an object")
+        if not isinstance(tuning_schema_version, int) or tuning_schema_version != 1:
+            raise MetadataError("metadata tuning_schema_version must be 1")
 
         return cls(
             schema_version=SCHEMA_VERSION,
@@ -131,6 +145,8 @@ class BuildMetadata:
             patch_hashes={str(key): str(value) for key, value in patch_hashes.items()},
             gn_args={str(key): tuple(map(str, value)) for key, value in gn_args.items()},
             toolchain={str(key): str(value) for key, value in toolchain.items()},
+            overlay_hashes={str(key): str(value) for key, value in overlay_hashes.items()},
+            tuning_schema_version=tuning_schema_version,
         )
 
 
@@ -168,6 +184,10 @@ def validate_compatible(
             raise MetadataError("packages use different patch sets")
         if require_same_headers and candidate.header_manifest != first.header_manifest:
             raise MetadataError("packages use different header manifests")
+        if require_same_headers and candidate.overlay_hashes != first.overlay_hashes:
+            raise MetadataError("packages use different overlay manifests")
+        if candidate.tuning_schema_version != first.tuning_schema_version:
+            raise MetadataError("packages use different CastTuning schema versions")
 
 
 def release_tag(builder_commit: str, release_date: str, platform: str) -> str:

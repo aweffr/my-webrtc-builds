@@ -24,6 +24,8 @@ def metadata_for(target: str = "macos-x64") -> BuildMetadata:
         patch_hashes={"h265.patch": "patch-sha256"},
         gn_args={"x64": get_target("macos-x64").gn_args_for("x64")},
         toolchain={"xcode": "26.0.1"},
+        overlay_hashes={"api/cast_tuning/config.h": "overlay-sha256"},
+        tuning_schema_version=1,
     )
 
 
@@ -52,11 +54,17 @@ class MetadataTests(unittest.TestCase):
             loaded = load_metadata(path)
             self.assertEqual(loaded, metadata)
             self.assertTrue(path.read_text().endswith("\n"))
-            self.assertEqual(json.loads(path.read_text())["schema_version"], 1)
+            payload = json.loads(path.read_text())
+            self.assertEqual(payload["schema_version"], 2)
+            self.assertEqual(payload["tuning_schema_version"], 1)
+            self.assertEqual(
+                payload["overlay_hashes"],
+                {"api/cast_tuning/config.h": "overlay-sha256"},
+            )
 
     def test_unknown_schema_is_rejected(self) -> None:
         payload = metadata_for().to_dict()
-        payload["schema_version"] = 2
+        payload["schema_version"] = 3
         with self.assertRaisesRegex(MetadataError, "schema version"):
             BuildMetadata.from_dict(payload)
 
@@ -77,6 +85,15 @@ class MetadataTests(unittest.TestCase):
         first = metadata_for("macos-x64")
         second = replace(metadata_for("macos-arm64"), header_manifest="different")
         with self.assertRaisesRegex(MetadataError, "header manifest"):
+            validate_compatible((first, second), require_same_headers=True)
+
+    def test_mixed_overlays_are_rejected_for_macos_merge(self) -> None:
+        first = metadata_for("macos-x64")
+        second = replace(
+            metadata_for("macos-arm64"),
+            overlay_hashes={"api/cast_tuning/config.h": "different"},
+        )
+        with self.assertRaisesRegex(MetadataError, "overlay manifest"):
             validate_compatible((first, second), require_same_headers=True)
 
     def test_platform_specific_patch_sets_are_allowed_for_release(self) -> None:

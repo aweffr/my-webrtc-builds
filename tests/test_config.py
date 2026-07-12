@@ -41,6 +41,28 @@ class TargetConfigTests(unittest.TestCase):
         self.assertEqual(mac_arm64.runner, "macos-26")
         self.assertEqual(mac_arm64.architectures, ("arm64",))
 
+    def test_cast_tuning_is_overlaid_only_for_macos_and_android(self) -> None:
+        android = get_target("android")
+        self.assertEqual(android.overlays, ("common", "android"))
+        self.assertEqual(android.patches[-1], "cast_tuning_hooks.patch")
+        self.assertEqual(
+            android.validation_targets,
+            ("api/cast_tuning:cast_tuning_native_tests",),
+        )
+
+        for name in ("macos-x64", "macos-arm64"):
+            target = get_target(name)
+            self.assertEqual(target.overlays, ("common", "macos"))
+            self.assertEqual(target.patches[-1], "cast_tuning_hooks.patch")
+            self.assertEqual(
+                target.validation_targets,
+                ("api/cast_tuning:cast_tuning_native_tests",),
+            )
+
+        self.assertEqual(get_target("ios").overlays, ())
+        self.assertEqual(get_target("ios").validation_targets, ())
+        self.assertNotIn("cast_tuning_hooks.patch", get_target("ios").patches)
+
     def test_macos_bundles_software_h264_while_mobile_does_not(self) -> None:
         for name in ("macos-x64", "macos-arm64"):
             args = get_target(name).gn_args_for(get_target(name).architectures[0])
