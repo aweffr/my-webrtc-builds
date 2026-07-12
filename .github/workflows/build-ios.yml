@@ -90,8 +90,13 @@ jobs:
             git -C "$WORK_DIR/checkout/src" rev-parse HEAD > "$DIAGNOSTICS_DIR/webrtc-commit.txt"
             git -C "$WORK_DIR/checkout/src" status --short > "$DIAGNOSTICS_DIR/webrtc-status.txt"
           fi
-          find "$WORK_DIR/out" -name gn-args.txt -type f -print -exec cp {} "$DIAGNOSTICS_DIR/" \; 2>/dev/null
-          find "$WORK_DIR/out" -maxdepth 4 -type f -print > "$DIAGNOSTICS_DIR/output-files.txt" 2>/dev/null
+          while IFS= read -r args_file; do
+            relative="${args_file#"$WORK_DIR/out/"}"
+            safe_name="${relative//\//-}"
+            cp "$args_file" "$DIAGNOSTICS_DIR/gn-args-$safe_name"
+          done < <(find "$WORK_DIR/out" -name gn-args.txt -type f -print 2>/dev/null)
+          shasum -a 256 patches/m150/*.patch > "$DIAGNOSTICS_DIR/patch-hashes.txt" 2>/dev/null
+          find "$WORK_DIR/out" -type f -print > "$DIAGNOSTICS_DIR/output-files.txt" 2>/dev/null
           {
             echo "## Build iOS"
             echo
