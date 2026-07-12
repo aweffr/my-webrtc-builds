@@ -38,7 +38,7 @@ def _parser() -> argparse.ArgumentParser:
     merge.add_argument("--builder-commit", required=True)
 
     release = subparsers.add_parser("release-manifest", help="validate and compose release data")
-    for target in ("android", "ios", "macos-x64", "macos-arm64"):
+    for target in ("android", "ios", "macos-x64", "macos-arm64", "windows-x64"):
         release.add_argument(f"--{target}-package", required=True, type=Path)
     release.add_argument("--xcframework", required=True, type=Path)
     release.add_argument("--xcframework-metadata", required=True, type=Path)
@@ -115,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
                 "ios": args.ios_package.resolve(),
                 "macos-x64": args.macos_x64_package.resolve(),
                 "macos-arm64": args.macos_arm64_package.resolve(),
+                "windows-x64": args.windows_x64_package.resolve(),
             },
             xcframework=args.xcframework.resolve(),
             xcframework_metadata=args.xcframework_metadata.resolve(),

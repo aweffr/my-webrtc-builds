@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Mapping
 
 from .metadata import BuildMetadata, MetadataError, load_metadata, release_tag, validate_compatible
-from .package import header_manifest, package_filename, safe_extract_tar
+from .package import header_manifest, package_filename, safe_extract_archive
 
 
 class CompositionError(RuntimeError):
@@ -39,8 +39,8 @@ def prepare_macos_inputs(
     shutil.rmtree(work_dir, ignore_errors=True)
     x64_destination = work_dir / "x64"
     arm64_destination = work_dir / "arm64"
-    safe_extract_tar(x64_archive, x64_destination)
-    safe_extract_tar(arm64_archive, arm64_destination)
+    safe_extract_archive(x64_archive, x64_destination)
+    safe_extract_archive(arm64_archive, arm64_destination)
     x64_root = x64_destination / "webrtc"
     arm64_root = arm64_destination / "webrtc"
     try:
@@ -196,7 +196,7 @@ def create_release_manifest(
     release_date: str,
     platform: str,
 ) -> Path:
-    expected_targets = {"android", "ios", "macos-x64", "macos-arm64"}
+    expected_targets = {"android", "ios", "macos-x64", "macos-arm64", "windows-x64"}
     if set(packages) != expected_targets:
         raise CompositionError(
             f"release requires exact platform set {sorted(expected_targets)}; got {sorted(packages)}"
@@ -213,7 +213,7 @@ def create_release_manifest(
                     f"unexpected package filename for {target}: {archive.name}; expected {expected_name}"
                 )
             destination = validation_dir / target
-            safe_extract_tar(archive, destination)
+            safe_extract_archive(archive, destination)
             item = load_metadata(destination / "webrtc" / "metadata.json")
             if item.target != target:
                 raise CompositionError(

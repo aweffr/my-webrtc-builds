@@ -12,7 +12,7 @@ from builder.compose import (
 )
 from builder.config import get_target
 from builder.metadata import BuildMetadata, save_metadata
-from builder.package import create_tar_gz, package_filename
+from builder.package import create_tar_gz, create_zip, package_filename
 
 
 def build_metadata(target: str, *, builder_commit: str = "a" * 40) -> BuildMetadata:
@@ -47,7 +47,10 @@ def create_package(
         (framework / "Headers").mkdir()
         (framework / "Headers" / "WebRTC.h").write_text(framework_header)
     archive = directory / package_filename(target)
-    create_tar_gz(root, archive, arcname="webrtc")
+    if target == "windows-x64":
+        create_zip(root, archive, arcname="webrtc")
+    else:
+        create_tar_gz(root, archive, arcname="webrtc")
     return archive
 
 
@@ -160,12 +163,18 @@ class MacOSInputTests(unittest.TestCase):
 
 
 class ReleaseManifestTests(unittest.TestCase):
-    def test_release_requires_exact_four_platform_packages_and_xcframework(self) -> None:
+    def test_release_requires_exact_five_platform_packages_and_xcframework(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             packages = {
                 target: create_package(root, target)
-                for target in ("android", "ios", "macos-x64", "macos-arm64")
+                for target in (
+                    "android",
+                    "ios",
+                    "macos-x64",
+                    "macos-arm64",
+                    "windows-x64",
+                )
             }
             xcframework = root / "WebRTC-m150-macos-universal.xcframework.zip"
             xcframework.write_bytes(b"xcframework")
@@ -192,14 +201,20 @@ class ReleaseManifestTests(unittest.TestCase):
             )
             payload = json.loads(manifest.read_text())
         self.assertEqual(payload["tag"], "webrtc-m150.7871.3-aaaaaaa-20260712-all")
-        self.assertEqual(len(payload["assets"]), 5)
+        self.assertEqual(len(payload["assets"]), 6)
 
     def test_release_rejects_workflow_commit_different_from_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             packages = {
                 target: create_package(root, target)
-                for target in ("android", "ios", "macos-x64", "macos-arm64")
+                for target in (
+                    "android",
+                    "ios",
+                    "macos-x64",
+                    "macos-arm64",
+                    "windows-x64",
+                )
             }
             xcframework = root / "WebRTC-m150-macos-universal.xcframework.zip"
             xcframework.write_bytes(b"xcframework")
