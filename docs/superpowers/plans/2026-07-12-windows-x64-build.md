@@ -102,3 +102,4 @@
 - 2026-07-12: The pinned M150 Windows build configuration uses desktop static CRT `/MT`; changing to `/MD` would require a separate Chromium build-config decision.
 - 2026-07-12: `windows-2022` is the verified runner for this M150 line; `windows-latest` now moves with newer Windows/Visual Studio images.
 - 2026-07-12: GitHub `workflow_dispatch` does not register a workflow file that exists only on a feature branch; the API returns 404 until the workflow is present on the repository default branch. Hosted validation therefore requires either merging the CI workflow to `main` or explicitly accepting local/actionlint-only validation.
+- 2026-07-13: Rebased the Windows extension onto `origin/main@3eabb6f`; no conflicts occurred. The post-rebase suite passed 73 tests, including Windows CastTuning native/package/symbol contracts.
