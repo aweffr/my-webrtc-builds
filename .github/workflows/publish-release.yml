@@ -1,0 +1,191 @@
+name: Publish Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      android_run_id:
+        description: Successful Build Android run ID
+        required: true
+        type: string
+      ios_run_id:
+        description: Successful Build iOS run ID
+        required: true
+        type: string
+      macos_x64_run_id:
+        description: Successful Build macOS x64 run ID
+        required: true
+        type: string
+      macos_arm64_run_id:
+        description: Successful Build macOS arm64 run ID
+        required: true
+        type: string
+      xcframework_run_id:
+        description: Successful Package macOS XCFramework run ID
+        required: true
+        type: string
+      revision:
+        description: Positive my-webrtc-builds release revision
+        required: true
+        default: 1
+        type: number
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_DIR: ${{ github.workspace }}/release
+      DIAGNOSTICS_DIR: ${{ github.workspace }}/diagnostics
+    steps:
+      - name: Check out builder
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Download Android package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: webrtc-m150-android-arm64-v8a
+          path: inputs/android
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.android_run_id }}
+
+      - name: Download iOS package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: webrtc-m150-ios
+          path: inputs/ios
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.ios_run_id }}
+
+      - name: Download macOS x64 package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: webrtc-m150-macos-x64
+          path: inputs/macos-x64
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.macos_x64_run_id }}
+
+      - name: Download macOS arm64 package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: webrtc-m150-macos-arm64
+          path: inputs/macos-arm64
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.macos_arm64_run_id }}
+
+      - name: Download macOS XCFramework package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: WebRTC-m150-macos-universal-xcframework
+          path: inputs/xcframework
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.xcframework_run_id }}
+
+      - name: Run unit tests
+        shell: bash
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Validate release inputs
+        id: manifest
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p "$RELEASE_DIR" "$DIAGNOSTICS_DIR"
+          python3 -u -m builder release-manifest \
+            --revision "${{ inputs.revision }}" \
+            --android-package inputs/android/webrtc-m150-android-arm64-v8a.tar.gz \
+            --ios-package inputs/ios/webrtc-m150-ios.tar.gz \
+            --macos-x64-package inputs/macos-x64/webrtc-m150-macos-x64.tar.gz \
+            --macos-arm64-package inputs/macos-arm64/webrtc-m150-macos-arm64.tar.gz \
+            --xcframework inputs/xcframework/WebRTC-m150-macos-universal.xcframework.zip \
+            --xcframework-metadata inputs/xcframework/xcframework-metadata.json \
+            --output-dir "$RELEASE_DIR" \
+            2>&1 | tee "$DIAGNOSTICS_DIR/release-validation.log"
+          TAG="$(jq -r .tag "$RELEASE_DIR/release-manifest.json")"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists" >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists" >&2
+            exit 1
+          fi
+
+      - name: Publish immutable draft then release
+        id: publish
+        if: steps.manifest.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          TAG="${{ steps.manifest.outputs.tag }}"
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --draft \
+            --title "WebRTC M150 build r${{ inputs.revision }}" \
+            --notes "Pinned WebRTC branch-heads/7871@{#3}, commit 1f975dfd761af6e5d76d28333191973b258d82a8." \
+            inputs/android/webrtc-m150-android-arm64-v8a.tar.gz \
+            inputs/ios/webrtc-m150-ios.tar.gz \
+            inputs/macos-x64/webrtc-m150-macos-x64.tar.gz \
+            inputs/macos-arm64/webrtc-m150-macos-arm64.tar.gz \
+            inputs/xcframework/WebRTC-m150-macos-universal.xcframework.zip \
+            "$RELEASE_DIR/release-manifest.json" \
+            "$RELEASE_DIR/SHA256SUMS"
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+
+      - name: Record release diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "$DIAGNOSTICS_DIR"
+          find inputs "$RELEASE_DIR" -maxdepth 3 -type f -print -exec shasum -a 256 {} \; > "$DIAGNOSTICS_DIR/input-files.txt" 2>&1
+          {
+            echo "## Publish WebRTC M150 Release"
+            echo
+            echo "- Manifest validation: \`${{ steps.manifest.outcome }}\`"
+            echo "- Publish: \`${{ steps.publish.outcome }}\`"
+            echo "- Tag: \`${{ steps.manifest.outputs.tag }}\`"
+            echo "- Diagnostics artifact: \`webrtc-m150-release-diagnostics\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: webrtc-m150-release-diagnostics
+          path: |
+            ${{ env.DIAGNOSTICS_DIR }}
+            ${{ env.RELEASE_DIR }}
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Propagate validation failure
+        if: steps.manifest.outcome == 'failure'
+        shell: bash
+        run: exit 1
+
+      - name: Propagate publish failure
+        if: steps.manifest.outcome == 'success' && steps.publish.outcome == 'failure'
+        shell: bash
+        run: exit 1

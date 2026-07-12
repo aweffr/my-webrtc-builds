@@ -1,0 +1,125 @@
+name: Build macOS arm64
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-macos-arm64
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 330
+    env:
+      WORK_DIR: ${{ github.workspace }}/build-workspace
+      DIST_DIR: ${{ github.workspace }}/dist
+      DIAGNOSTICS_DIR: ${{ github.workspace }}/diagnostics
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Check out builder
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Select Xcode 26.0.1
+        shell: bash
+        run: sudo xcode-select --switch /Applications/Xcode_26.0.app/Contents/Developer
+
+      - name: Record runner state
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$DIST_DIR" "$DIAGNOSTICS_DIR"
+          {
+            date -u
+            uname -a
+            echo "RUNNER_OS=$RUNNER_OS"
+            echo "RUNNER_ARCH=$RUNNER_ARCH"
+            echo "ImageOS=${ImageOS:-unknown}"
+            echo "ImageVersion=${ImageVersion:-unknown}"
+            python3 --version
+            git --version
+            df -h
+          } | tee "$DIAGNOSTICS_DIR/runner-before.txt"
+
+      - name: Run unit tests
+        shell: bash
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Build and package macos-arm64
+        id: build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 -u -m builder build \
+            --target macos-arm64 \
+            --work-dir "$WORK_DIR" \
+            --dist-dir "$DIST_DIR" \
+            --builder-commit "$GITHUB_SHA" \
+            2>&1 | tee "$DIAGNOSTICS_DIR/build.log"
+
+      - name: Upload binary package
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: webrtc-m150-macos-arm64
+          path: ${{ env.DIST_DIR }}/webrtc-m150-macos-arm64.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Collect diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          {
+            date -u
+            df -h
+            du -sh "$WORK_DIR" "$DIST_DIR" 2>/dev/null
+          } > "$DIAGNOSTICS_DIR/runner-after.txt"
+          if [ -d "$WORK_DIR/checkout/src/.git" ]; then
+            git -C "$WORK_DIR/checkout/src" rev-parse HEAD > "$DIAGNOSTICS_DIR/webrtc-commit.txt"
+            git -C "$WORK_DIR/checkout/src" status --short > "$DIAGNOSTICS_DIR/webrtc-status.txt"
+          fi
+          find "$WORK_DIR/out" -name gn-args.txt -type f -print -exec cp {} "$DIAGNOSTICS_DIR/" \; 2>/dev/null
+          find "$WORK_DIR/out" -maxdepth 4 -type f -print > "$DIAGNOSTICS_DIR/output-files.txt" 2>/dev/null
+          {
+            echo "## Build macOS arm64"
+            echo
+            echo "- Target: \`macos-arm64\`"
+            echo "- Builder commit: \`$GITHUB_SHA\`"
+            echo "- Build outcome: \`${{ steps.build.outcome }}\`"
+            echo "- Diagnostics artifact: \`webrtc-m150-macos-arm64-diagnostics\`"
+            if [ -f "$WORK_DIR/diagnostics/build-events.jsonl" ]; then
+              echo
+              echo "### Phase journal"
+              echo '~~~json'
+              tail -n 30 "$WORK_DIR/diagnostics/build-events.jsonl"
+              echo '~~~'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: webrtc-m150-macos-arm64-diagnostics
+          path: |
+            ${{ env.DIAGNOSTICS_DIR }}
+            ${{ env.WORK_DIR }}/diagnostics
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Propagate build failure
+        if: steps.build.outcome == 'failure'
+        shell: bash
+        run: exit 1
