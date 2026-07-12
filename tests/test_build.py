@@ -66,6 +66,35 @@ class SourcePreparationTests(unittest.TestCase):
         self.assertEqual(environment["GIT_CONFIG_VALUE_0"], "true")
         self.assertIn(";", environment["PATH"])
 
+    def test_windows_bootstraps_git_wrappers_before_fetch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = Workspace(root)
+            target = get_target("windows-x64")
+            workspace.depot_tools.mkdir(parents=True)
+            patch_dir = root / "patches"
+            patch_dir.mkdir()
+            for name in target.patches:
+                (patch_dir / name).write_text("patch")
+            overlay_dir = root / "overlays"
+            overlay = overlay_dir / "common" / "placeholder.h"
+            overlay.parent.mkdir(parents=True)
+            overlay.write_text("common")
+
+            runner = FakeRunner()
+            prepare_source(target, workspace, patch_dir, runner, overlay_dir)
+
+            commands = [call[1] for call in runner.calls]
+            bootstrap_index = next(
+                i
+                for i, command in enumerate(commands)
+                if command[0].endswith("win_tools.bat")
+            )
+            fetch_index = next(
+                i for i, command in enumerate(commands) if command[0].endswith("fetch.bat")
+            )
+            self.assertLess(bootstrap_index, fetch_index)
+
     def test_overlay_manifest_is_deterministic_and_apply_rejects_collisions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

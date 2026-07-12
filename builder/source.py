@@ -162,6 +162,14 @@ def prepare_source(
             f"unexpected depot_tools commit {actual_depot_tools_commit!r}; "
             f"expected {DEPOT_TOOLS_COMMIT}"
         )
+    if target.name == "windows-x64" and not (
+        workspace.depot_tools / "git.bat"
+    ).is_file():
+        runner.run(
+            [workspace.depot_tools / "bootstrap" / "win_tools.bat"],
+            cwd=workspace.depot_tools,
+            env=environment,
+        )
     if target.name != "windows-x64" and not (
         workspace.depot_tools / "python3_bin_reldir.txt"
     ).is_file():
