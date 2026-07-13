@@ -1,0 +1,73 @@
+name: Probe Windows verifier tools
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Discover Visual Studio tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tools = @('dumpbin.exe', 'lib.exe', 'cl.exe', 'lld-link.exe')
+          foreach ($tool in $tools) {
+            Write-Host "=== vswhere -find **/$tool ==="
+            & vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find "**/$tool"
+            Write-Host "exit=$LASTEXITCODE"
+          }
+          Write-Host '=== PATH lookup ==='
+          where.exe vswhere
+          where.exe dumpbin.exe 2>&1
+          where.exe lib.exe 2>&1
+          where.exe cl.exe 2>&1
+          where.exe lld-link.exe 2>&1
+
+      - name: Build and inspect a minimal COFF archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'webrtc-verifier-probe'
+          New-Item -ItemType Directory -Force $root | Out-Null
+          $source = Join-Path $root 'probe.cc'
+          $object = Join-Path $root 'probe.obj'
+          $library = Join-Path $root 'probe.lib'
+          @'
+          extern "C" void H264EncoderImpl() {}
+          extern "C" void H264DecoderImpl() {}
+          namespace webrtc::cast_tuning {
+          class CastTuningController {
+           public:
+            static void run() {}
+          };
+          void keep_controller_symbol() { CastTuningController::run(); }
+          }
+          '@ | Set-Content -Encoding ascii $source
+
+          $cl = @(& vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find '**/Hostx64/x64/cl.exe') | Select-Object -First 1
+          $lib = @(& vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find '**/Hostx64/x64/lib.exe') | Select-Object -First 1
+          $dumpbin = @(& vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find '**/Hostx64/x64/dumpbin.exe') | Select-Object -First 1
+          if (-not $cl -or -not $lib -or -not $dumpbin) { throw 'required Visual Studio tools were not found' }
+
+          & $cl /nologo /Od /c "/Fo$object" $source
+          & $lib /nologo "/OUT:$library" $object
+          Write-Host "=== archive=$library ==="
+          Write-Host '=== dumpbin /headers ==='
+          & $dumpbin /headers $library
+          Write-Host '=== dumpbin /linkermember:2 ==='
+          & $dumpbin /linkermember:2 $library
+
+          "cl=$cl" | Set-Content (Join-Path $root 'tool-paths.txt')
+          "lib=$lib" | Add-Content (Join-Path $root 'tool-paths.txt')
+          "dumpbin=$dumpbin" | Add-Content (Join-Path $root 'tool-paths.txt')
+
+      - name: Upload probe output
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-verifier-tool-probe
+          path: ${{ runner.temp }}/webrtc-verifier-probe
