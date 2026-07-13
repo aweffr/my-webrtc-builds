@@ -13,6 +13,15 @@ CORE = ROOT / "overlays" / "m150" / "common" / "api" / "cast_tuning"
 
 
 class CastTuningNativeContractTests(unittest.TestCase):
+    def test_native_contract_tests_use_platform_neutral_paths(self) -> None:
+        platform_absolute_path = re.compile(r'"(?:/|[A-Za-z]:[\\/]|\\\\)')
+        violations: list[str] = []
+        for path in sorted(CORE.glob("*test.cc")):
+            for line_number, line in enumerate(path.read_text().splitlines(), start=1):
+                if platform_absolute_path.search(line):
+                    violations.append(f"{path.name}:{line_number}: {line.strip()}")
+        self.assertEqual(violations, [])
+
     def test_example_profiles_are_valid_json(self) -> None:
         for path in (ROOT / "examples").glob("*.json"):
             with self.subTest(path=path.name):

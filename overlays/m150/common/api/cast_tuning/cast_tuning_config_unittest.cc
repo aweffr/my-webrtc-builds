@@ -1,10 +1,13 @@
 #include "api/cast_tuning/cast_tuning_config.h"
 
-#include <cstdio>
+#include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <random>
 #include <string>
+#include <system_error>
 
 #include "api/cast_tuning/cast_tuning_controller.h"
 #include "api/cast_tuning/cast_tuning_recovery.h"
@@ -18,6 +21,38 @@ void Expect(bool condition, const char* message) {
     std::exit(1);
   }
 }
+
+class TemporaryTestDirectory {
+ public:
+  TemporaryTestDirectory() {
+    std::error_code error;
+    const std::filesystem::path root =
+        std::filesystem::temp_directory_path(error);
+    Expect(!error, "system temporary directory must be available");
+
+    std::random_device entropy;
+    for (int attempt = 0; attempt < 100; ++attempt) {
+      const uint64_t nonce =
+          (static_cast<uint64_t>(entropy()) << 32) | entropy();
+      path_ = root / ("cast-tuning-contract-" + std::to_string(nonce));
+      error.clear();
+      if (std::filesystem::create_directory(path_, error))
+        return;
+    }
+    Expect(false, "unique temporary test directory could not be created");
+  }
+
+  ~TemporaryTestDirectory() {
+    std::error_code error;
+    std::filesystem::remove_all(path_, error);
+    Expect(!error, "temporary test directory must be removable");
+  }
+
+  const std::filesystem::path& path() const { return path_; }
+
+ private:
+  std::filesystem::path path_;
+};
 
 }  // namespace
 
@@ -197,17 +232,17 @@ int main() {
   Expect(recovery.Evaluate(2349) == RecoveryAction::kNone,
          "decoded frame resets the no-frame timeout");
 
-  const std::string telemetry_path =
-      "/tmp/cast_tuning_telemetry_contract.jsonl";
+  TemporaryTestDirectory temporary_directory;
+  const std::filesystem::path telemetry_path =
+      temporary_directory.path() / "cast_tuning_telemetry_contract.jsonl";
   std::string telemetry_line;
-  std::remove(telemetry_path.c_str());
 
-  const std::string controller_telemetry_path =
-      "/tmp/cast_tuning_controller_telemetry_contract.jsonl";
-  std::remove(controller_telemetry_path.c_str());
+  const std::filesystem::path controller_telemetry_path =
+      temporary_directory.path() /
+      "cast_tuning_controller_telemetry_contract.jsonl";
   {
     CastTuningConfig observed = detail;
-    observed.telemetry.jsonl_path = controller_telemetry_path;
+    observed.telemetry.jsonl_path = controller_telemetry_path.string();
     FakeBackend observed_backend;
     webrtc::cast_tuning::CastTuningController observed_controller(
         observed, &observed_backend);
@@ -217,19 +252,22 @@ int main() {
                webrtc::cast_tuning::ApplyStatus::kApplied,
            "observed patch should apply");
   }
-  std::ifstream controller_telemetry_file(controller_telemetry_path);
   int config_applied_events = 0;
-  while (std::getline(controller_telemetry_file, telemetry_line)) {
-    if (telemetry_line.find("\"event_type\":\"config_applied\"") !=
-        std::string::npos) {
-      ++config_applied_events;
+  {
+    std::ifstream controller_telemetry_file(controller_telemetry_path);
+    Expect(controller_telemetry_file.is_open(),
+           "controller telemetry file must be readable");
+    while (std::getline(controller_telemetry_file, telemetry_line)) {
+      if (telemetry_line.find("\"event_type\":\"config_applied\"") !=
+          std::string::npos) {
+        ++config_applied_events;
+      }
     }
   }
   Expect(config_applied_events == 2,
          "controller must log initial and live config application");
-  std::remove(controller_telemetry_path.c_str());
   {
-    webrtc::cast_tuning::CastTelemetryWriter writer(telemetry_path);
+    webrtc::cast_tuning::CastTelemetryWriter writer(telemetry_path.string());
     writer.Emit({.event_type = "config_applied",
                  .timestamp_ms = 1000,
                  .session_id = controller.snapshot().session_id,
@@ -247,17 +285,19 @@ int main() {
     writer.Flush();
     Expect(writer.write_failures() == 0, "telemetry writer should flush JSONL");
   }
-  std::ifstream telemetry_file(telemetry_path);
   int telemetry_lines = 0;
-  while (std::getline(telemetry_file, telemetry_line)) {
-    ++telemetry_lines;
-    Expect(telemetry_line.find("\"schema_version\":1") != std::string::npos,
-           "telemetry must include schema version");
-    Expect(telemetry_line.find("\"session_id\":") != std::string::npos,
-           "telemetry must include session id");
+  {
+    std::ifstream telemetry_file(telemetry_path);
+    Expect(telemetry_file.is_open(), "telemetry file must be readable");
+    while (std::getline(telemetry_file, telemetry_line)) {
+      ++telemetry_lines;
+      Expect(telemetry_line.find("\"schema_version\":1") != std::string::npos,
+             "telemetry must include schema version");
+      Expect(telemetry_line.find("\"session_id\":") != std::string::npos,
+             "telemetry must include session id");
+    }
   }
   Expect(telemetry_lines == 2, "telemetry writer must preserve event ordering");
-  std::remove(telemetry_path.c_str());
 
 #if defined(CAST_TUNING_WITH_JSON_TESTS)
   RunCastTuningJsonContractTests();
