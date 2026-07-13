@@ -40,12 +40,14 @@ jobs:
           @'
           extern "C" void H264EncoderImpl() {}
           extern "C" void H264DecoderImpl() {}
-          namespace webrtc::cast_tuning {
+          namespace webrtc {
+          namespace cast_tuning {
           class CastTuningController {
            public:
             static void run() {}
           };
           void keep_controller_symbol() { CastTuningController::run(); }
+          }
           }
           '@ | Set-Content -Encoding ascii $source
 
@@ -54,13 +56,17 @@ jobs:
           $dumpbin = @(& vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find '**/Hostx64/x64/dumpbin.exe') | Select-Object -First 1
           if (-not $cl -or -not $lib -or -not $dumpbin) { throw 'required Visual Studio tools were not found' }
 
-          & $cl /nologo /Od /c "/Fo$object" $source
+          & $cl /nologo /Od /std:c++17 /c "/Fo$object" $source
+          if ($LASTEXITCODE -ne 0) { throw "cl.exe failed with exit code $LASTEXITCODE" }
           & $lib /nologo "/OUT:$library" $object
+          if ($LASTEXITCODE -ne 0) { throw "lib.exe failed with exit code $LASTEXITCODE" }
           Write-Host "=== archive=$library ==="
           Write-Host '=== dumpbin /headers ==='
           & $dumpbin /headers $library
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin /headers failed with exit code $LASTEXITCODE" }
           Write-Host '=== dumpbin /linkermember:2 ==='
           & $dumpbin /linkermember:2 $library
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin /linkermember:2 failed with exit code $LASTEXITCODE" }
 
           "cl=$cl" | Set-Content (Join-Path $root 'tool-paths.txt')
           "lib=$lib" | Add-Content (Join-Path $root 'tool-paths.txt')
