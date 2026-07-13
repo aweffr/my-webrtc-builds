@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Protocol
 
@@ -97,36 +98,38 @@ def _expect_windows_binary(
     runner: CaptureRunner,
     library: Path,
     *,
-    tool_dir: Path | str | None,
+    dumpbin: Path | str | None,
 ) -> None:
-    root = Path(tool_dir) if tool_dir is not None else Path(".")
-    lib_tool = root / "llvm-lib.exe"
-    readobj_tool = root / "llvm-readobj.exe"
-    nm_tool = root / "llvm-nm.exe"
-    members = runner.capture([lib_tool, "/list", library])
-    if not members.strip():
+    dumpbin_tool = Path(dumpbin) if dumpbin is not None else Path("dumpbin.exe")
+    headers = runner.capture([dumpbin_tool, "/headers", library])
+    if not headers.strip():
         raise VerificationError(f"static library has no members: {library}")
 
-    headers = runner.capture([readobj_tool, "--file-headers", library])
-    machines = {
-        line.split(":", 1)[1].strip().split()[0]
-        for line in headers.splitlines()
-        if line.strip().startswith("Machine:")
-    }
+    normalized_headers = headers.lower()
+    machines = set()
+    if re.search(r"\b8664\s+machine\b|image_file_machine_amd64", normalized_headers):
+        machines.add("IMAGE_FILE_MACHINE_AMD64")
+    if re.search(r"\b14c\s+machine\b|image_file_machine_i386", normalized_headers):
+        machines.add("IMAGE_FILE_MACHINE_I386")
+    if re.search(r"\baa64\s+machine\b|image_file_machine_arm64", normalized_headers):
+        machines.add("IMAGE_FILE_MACHINE_ARM64")
     if machines != {"IMAGE_FILE_MACHINE_AMD64"}:
         raise VerificationError(
             f"unexpected COFF architecture for {library}: {sorted(machines)}; expected AMD64"
         )
-    _expect_symbols(
-        runner,
-        library,
-        (
-            "H264EncoderImpl",
-            "H264DecoderImpl",
-            "webrtc::cast_tuning::CastTuningController",
+    symbols = runner.capture([dumpbin_tool, "/linkermember:2", library])
+    required_symbols = {
+        "H264EncoderImpl": "H264EncoderImpl",
+        "H264DecoderImpl": "H264DecoderImpl",
+        # DUMPBIN prints MSVC-decorated names, so namespace separators are
+        # represented by '@' rather than the demangled '::' spelling.
+        "webrtc::cast_tuning::CastTuningController": (
+            "@CastTuningController@cast_tuning@webrtc@@"
         ),
-        tool=nm_tool,
-    )
+    }
+    for symbol, fragment in required_symbols.items():
+        if fragment not in symbols:
+            raise VerificationError(f"required symbol {symbol!r} is missing from {library}")
 
 
 def _framework_binary(root: Path) -> Path:
@@ -146,7 +149,7 @@ def verify_binaries(
     runner: CaptureRunner,
     *,
     android_archiver: Path | str = "llvm-ar",
-    windows_tool_dir: Path | str | None = None,
+    windows_dumpbin: Path | str | None = None,
 ) -> None:
     if target == "android":
         library = root / "lib" / "arm64-v8a" / "libwebrtc.a"
@@ -215,6 +218,10 @@ def verify_binaries(
         )
         return
     if target == "windows-x64":
-        _expect_windows_binary(runner, root / "lib" / "webrtc.lib", tool_dir=windows_tool_dir)
+        _expect_windows_binary(
+            runner,
+            root / "lib" / "webrtc.lib",
+            dumpbin=windows_dumpbin,
+        )
         return
     raise VerificationError(f"unsupported binary verification target {target!r}")

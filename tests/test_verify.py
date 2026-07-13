@@ -256,18 +256,20 @@ class BinaryVerificationTests(unittest.TestCase):
             library.write_bytes(b"archive")
             runner = FakeRunner(
                 {
-                    "llvm-lib.exe": "webrtc.obj",
-                    "llvm-readobj.exe": (
-                        "FileHeader {\n  Machine: IMAGE_FILE_MACHINE_AMD64 (0x8664)\n}"
-                    ),
-                    "llvm-nm.exe": (
+                    "dumpbin.exe": (
+                        "FILE HEADER VALUES\n"
+                        "             8664 machine (x64)\n"
+                        "LINKER MEMBERS\n"
                         "H264EncoderImpl H264DecoderImpl "
-                        "webrtc::cast_tuning::CastTuningController"
+                        "?run@CastTuningController@cast_tuning@webrtc@@SAXXZ"
                     ),
                 }
             )
             verify_binaries("windows-x64", root, runner)
-        self.assertTrue(any(command[0].endswith("llvm-readobj.exe") for command in runner.commands))
+        self.assertTrue(any(command[0].endswith("dumpbin.exe") for command in runner.commands))
+        self.assertTrue(any("/headers" in command for command in runner.commands))
+        self.assertTrue(any("/linkermember:2" in command for command in runner.commands))
+        self.assertFalse(any(command[0].endswith("llvm-lib.exe") for command in runner.commands))
 
     def test_windows_rejects_wrong_coff_architecture(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -276,12 +278,33 @@ class BinaryVerificationTests(unittest.TestCase):
             (root / "lib" / "webrtc.lib").write_bytes(b"archive")
             runner = FakeRunner(
                 {
-                    "llvm-lib.exe": "webrtc.obj",
-                    "llvm-readobj.exe": "Machine: IMAGE_FILE_MACHINE_I386 (0x14c)",
-                    "llvm-nm.exe": "",
+                    "dumpbin.exe": (
+                        "FILE HEADER VALUES\n"
+                        "             14c machine (x86)\n"
+                        "LINKER MEMBERS\n"
+                    ),
                 }
             )
             with self.assertRaisesRegex(VerificationError, "AMD64"):
+                verify_binaries("windows-x64", root, runner)
+
+    def test_windows_rejects_cast_tuning_symbol_from_wrong_namespace(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "lib").mkdir()
+            (root / "lib" / "webrtc.lib").write_bytes(b"archive")
+            runner = FakeRunner(
+                {
+                    "dumpbin.exe": (
+                        "FILE HEADER VALUES\n"
+                        "             8664 machine (x64)\n"
+                        "LINKER MEMBERS\n"
+                        "H264EncoderImpl H264DecoderImpl "
+                        "?run@CastTuningController@other_namespace@@SAXXZ"
+                    ),
+                }
+            )
+            with self.assertRaisesRegex(VerificationError, "CastTuningController"):
                 verify_binaries("windows-x64", root, runner)
 
 

@@ -231,14 +231,14 @@ class PackageContractTests(unittest.TestCase):
             def capture(self, argv, *, cwd=None, env=None) -> str:
                 command = tuple(map(str, argv))
                 self.capture_commands.append(command)
-                if command[0].endswith("llvm-lib.exe"):
-                    return "webrtc.obj"
-                if command[0].endswith("llvm-readobj.exe"):
-                    return "Machine: IMAGE_FILE_MACHINE_AMD64 (0x8664)"
-                if command[0].endswith("llvm-nm.exe"):
+                if command[0] == "vswhere" and "-find" in command:
+                    return r"C:\VS\dumpbin.exe"
+                if command[0].endswith("dumpbin.exe") and "/headers" in command:
+                    return "FILE HEADER VALUES\n             8664 machine (x64)"
+                if command[0].endswith("dumpbin.exe"):
                     return (
                         "H264EncoderImpl H264DecoderImpl "
-                        "webrtc::cast_tuning::CastTuningController"
+                        "?run@CastTuningController@cast_tuning@webrtc@@SAXXZ"
                     )
                 return ""
 
@@ -267,6 +267,7 @@ class PackageContractTests(unittest.TestCase):
             source.parent.mkdir(parents=True)
             source.write_text("common")
             unit = BuildUnit("x64", output, target.gn_args_for("x64"))
+            runner = WindowsLicenseRunner()
 
             archive = stage_and_package(
                 target,
@@ -276,7 +277,7 @@ class PackageContractTests(unittest.TestCase):
                 patch_dir,
                 "a" * 40,
                 {"python": "3.11"},
-                WindowsLicenseRunner(),
+                runner,
                 overlay_dir=overlay_dir,
             )
             extracted = root / "extracted"
@@ -286,6 +287,13 @@ class PackageContractTests(unittest.TestCase):
             self.assertEqual((package / "NOTICE").read_text(), "third-party notices")
             self.assertTrue((package / "lib" / "webrtc.lib").is_file())
             self.assertTrue((package / "include" / "api" / "cast_tuning" / "extra.h").is_file())
+            self.assertTrue(
+                any(
+                    command[0] == "vswhere"
+                    and "**/Hostx64/x64/dumpbin.exe" in command
+                    for command in runner.capture_commands
+                )
+            )
 
 
 if __name__ == "__main__":

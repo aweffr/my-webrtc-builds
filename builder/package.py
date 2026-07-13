@@ -55,6 +55,25 @@ def package_filename(target: str) -> str:
         raise PackageError(f"unsupported package target {target!r}") from exc
 
 
+def _find_windows_dumpbin(runner: Runner) -> Path:
+    output = runner.capture(
+        [
+            "vswhere",
+            "-latest",
+            "-products",
+            "*",
+            "-requires",
+            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "-find",
+            "**/Hostx64/x64/dumpbin.exe",
+        ]
+    )
+    candidates = [Path(line.strip()) for line in output.splitlines() if line.strip()]
+    if not candidates:
+        raise PackageError("Visual Studio dumpbin.exe was not found")
+    return candidates[0]
+
+
 def write_checksums(root: Path) -> Path:
     output = root / "SHA256SUMS"
     files = sorted(path for path in root.rglob("*") if path.is_file() and path != output)
@@ -278,8 +297,8 @@ def stage_and_package(
             if target.name == "android"
             else "llvm-ar"
         ),
-        windows_tool_dir=(
-            workspace.src / "third_party/llvm-build/Release+Asserts/bin"
+        windows_dumpbin=(
+            _find_windows_dumpbin(runner)
             if target.name == "windows-x64"
             else None
         ),

@@ -44,7 +44,7 @@
 - [ ] Add failing tests for `webrtc-m150-windows-x64.zip`, safe ZIP extraction rejecting traversal/drive paths/backslash escapes/symlinks, required `lib/webrtc.lib`, and Windows tool command selection.
 - [ ] Add ZIP creation with stable `webrtc/` archive root and a format-dispatching safe extraction helper; leave existing tar extraction behavior unchanged.
 - [ ] Package `unit.output_dir / "webrtc.lib"`, generated headers, CastTuning headers, notices, resolved GN args, metadata, and `SHA256SUMS`.
-- [ ] Verify the Windows archive with hermetic checkout tools: non-empty `llvm-lib.exe /list`, `llvm-readobj.exe --file-headers` reporting AMD64 COFF members, and demangled `H264EncoderImpl`, `H264DecoderImpl`, and `webrtc::cast_tuning::CastTuningController` symbols from `llvm-nm.exe`.
+- [ ] Verify the Windows archive with the runner's Visual Studio tools: `vswhere` resolves `dumpbin.exe`, `/headers` reports AMD64 COFF members, and `/linkermember:2` contains `H264EncoderImpl`, `H264DecoderImpl`, and the decorated `CastTuningController` symbol.
 - [ ] Run `python3 -m unittest tests.test_package tests.test_verify -v`; expected result is PASS.
 - [ ] Commit `feat: package and verify Windows x64 artifacts`.
 
