@@ -1,7 +1,8 @@
 diff --git a/BUILD.gn b/BUILD.gn
 --- a/BUILD.gn
 +++ b/BUILD.gn
-@@
+@@ -564,4 +564,10 @@ if (!build_with_chromium) {
+       "pc:libjingle_peerconnection",
        "pc:rtc_pc",
        "video",
 +      "modules/audio_device:audio_device_module_from_input_and_output",

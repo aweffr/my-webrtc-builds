@@ -13,6 +13,20 @@ from builder.source import (
 )
 
 
+VALID_PATCH = """\
+diff --git a/a b/a
+--- a/a
++++ b/a
+@@ -0,0 +1 @@
++placeholder
+"""
+
+
+def write_valid_patches(patch_dir: Path, names: tuple[str, ...]) -> None:
+    for name in names:
+        (patch_dir / name).write_text(VALID_PATCH)
+
+
 class FakeRunner:
     def __init__(self, *, commit: str = SOURCE_VERSION.commit) -> None:
         self.calls: list[tuple[str, tuple[str, ...], Path | None]] = []
@@ -74,8 +88,7 @@ class SourcePreparationTests(unittest.TestCase):
             workspace.depot_tools.mkdir(parents=True)
             patch_dir = root / "patches"
             patch_dir.mkdir()
-            for name in target.patches:
-                (patch_dir / name).write_text("patch")
+            write_valid_patches(patch_dir, target.patches)
             overlay_dir = root / "overlays"
             overlay = overlay_dir / "common" / "placeholder.h"
             overlay.parent.mkdir(parents=True)
@@ -94,6 +107,22 @@ class SourcePreparationTests(unittest.TestCase):
                 i for i, command in enumerate(commands) if command[0].endswith("fetch.bat")
             )
             self.assertLess(bootstrap_index, fetch_index)
+
+    def test_malformed_patch_is_rejected_before_source_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = get_target("windows-x64")
+            patch_dir = root / "patches"
+            patch_dir.mkdir()
+            write_valid_patches(patch_dir, target.patches)
+            (patch_dir / target.patches[0]).write_text(
+                "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@\n"
+            )
+
+            runner = FakeRunner()
+            with self.assertRaisesRegex(BuildError, "invalid unified diff hunk header"):
+                prepare_source(target, Workspace(root / "work"), patch_dir, runner)
+            self.assertEqual(runner.calls, [])
 
     def test_overlay_manifest_is_deterministic_and_apply_rejects_collisions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -131,8 +160,7 @@ class SourcePreparationTests(unittest.TestCase):
             workspace.depot_tools.mkdir(parents=True)
             patch_dir = root / "patches"
             patch_dir.mkdir()
-            for name in get_target("android").patches:
-                (patch_dir / name).write_text("diff --git a/a b/a\n")
+            write_valid_patches(patch_dir, get_target("android").patches)
             overlay_dir = root / "overlays"
             for group in get_target("android").overlays:
                 source = overlay_dir / group / group / "placeholder.h"
@@ -167,8 +195,7 @@ class SourcePreparationTests(unittest.TestCase):
             workspace.depot_tools.mkdir(parents=True)
             patch_dir = root / "patches"
             patch_dir.mkdir()
-            for name in get_target("android").patches:
-                (patch_dir / name).write_text("patch")
+            write_valid_patches(patch_dir, get_target("android").patches)
             overlay_dir = root / "overlays"
             for group in get_target("android").overlays:
                 source = overlay_dir / group / group / "placeholder.h"

@@ -10,6 +10,9 @@ notices embedded in added source files.
 Shiguredo's separate `ios_simulcast.patch`, which is intentionally outside this
 project's scope. All other approved patch content is unchanged.
 
+`windows_add_deps.patch` retains Shiguredo's dependency additions, with hunk
+context adjusted to apply to this project's pinned M150 source commit.
+
 `codec_licenses.patch` is maintained by this project. It extends M150's
 license generator with the pinned FFmpeg LGPL 2.1 text and Cisco OpenH264
 license after those dependencies are introduced by the codec patches. It does
@@ -25,7 +28,7 @@ umbrella header.
 | File | SHA-256 |
 | --- | --- |
 | `add_deps.patch` | `835b09d756f9dc3cbf2286476d654b08c82fbcc141a40f15ecf6145d789d272b` |
-| `windows_add_deps.patch` | `6f8ed39bb6e15823a098273992f3208e68ebeceef9b0c87fde9562c9298a6efc` |
+| `windows_add_deps.patch` | `1877878571707079ec53989e5f17b9585f106cc6935908104c2245ec89a15104` |
 | `h265.patch` | `5c1e1d169e59050722b5e329a47bbea889f8194e099b175703fda32c1b36b2e7` |
 | `h265_android.patch` | `9598c581d937fc9e15c34eafa6d42f707e40df65999453cdd8e7659d29eb7d8e` |
 | `h265_ios.patch` | `13cb55f38774a6312ca0b965779f8c48e581d23ae31680e813f7418966c5482a` |

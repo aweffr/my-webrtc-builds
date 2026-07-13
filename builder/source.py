@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import os
 import hashlib
+import os
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,9 @@ from .config import SOURCE_VERSION, TargetConfig
 
 # This is the depot_tools revision recorded by the pinned WebRTC M150 DEPS file.
 DEPOT_TOOLS_COMMIT = "2f9bc10799af5aeb4a0ed903742ad69bb1d0ef75"
+_UNIFIED_HUNK_HEADER = re.compile(
+    r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@(?: .*)?$"
+)
 
 
 class BuildError(RuntimeError):
@@ -124,6 +128,21 @@ def _configure_target_os(target: TargetConfig, gclient_path: Path) -> None:
         gclient_path.write_text(content.rstrip() + f"\n{declaration}\n")
 
 
+def _validated_patch_paths(target: TargetConfig, patch_dir: Path) -> tuple[Path, ...]:
+    paths: list[Path] = []
+    for patch_name in target.patches:
+        patch_path = patch_dir / patch_name
+        if not patch_path.is_file():
+            raise BuildError(f"required patch is missing: {patch_path}")
+        for line_number, line in enumerate(patch_path.read_text().splitlines(), start=1):
+            if line.startswith("@@") and not _UNIFIED_HUNK_HEADER.fullmatch(line):
+                raise BuildError(
+                    f"invalid unified diff hunk header in {patch_path}:{line_number}"
+                )
+        paths.append(patch_path)
+    return tuple(paths)
+
+
 def prepare_source(
     target: TargetConfig,
     workspace: Workspace,
@@ -132,6 +151,7 @@ def prepare_source(
     overlay_dir: Path | None = None,
 ) -> None:
     workspace.root.mkdir(parents=True, exist_ok=True)
+    patch_paths = _validated_patch_paths(target, patch_dir)
     environment = workspace.environment(target)
     if not workspace.depot_tools.exists():
         workspace.depot_tools.mkdir(parents=True)
@@ -222,10 +242,7 @@ def prepare_source(
             f"unexpected WebRTC commit {actual_commit!r}; expected {SOURCE_VERSION.commit}"
         )
 
-    for patch_name in target.patches:
-        patch_path = patch_dir / patch_name
-        if not patch_path.is_file():
-            raise BuildError(f"required patch is missing: {patch_path}")
+    for patch_path in patch_paths:
         runner.run(
             ["git", "apply", "--check", patch_path],
             cwd=workspace.src,
