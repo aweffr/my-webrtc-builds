@@ -12,6 +12,7 @@
 
 #include "api/cast_tuning/cast_tuning_config.h"
 #include "api/cast_tuning/cast_tuning_controller.h"
+#include "api/cast_tuning/cast_tuning_telemetry.h"
 #include "api/cast_tuning/webrtc_cast_tuning_backend.h"
 #include "api/rtc_error.h"
 
@@ -28,8 +29,10 @@ NSError *CastError(NSString *message) {
 }  // namespace
 
 @interface RTCCastTuningEncoderEvidence : NSObject
-- (instancetype)initWithTelemetryPath:(nullable NSString *)telemetryPath;
+- (instancetype)initWithTelemetryWriter:
+    (std::shared_ptr<webrtc::cast_tuning::CastTelemetryWriter>)writer;
 - (void)setConfigHash:(NSString *)configHash;
+- (void)setSessionId:(NSString *)sessionId;
 - (void)recordEvent:(NSDictionary<NSString *, id> *)event;
 - (NSDictionary<NSString *, id> *)snapshot;
 @end
@@ -38,16 +41,17 @@ NSError *CastError(NSString *message) {
   NSLock *_lock;
   NSDictionary<NSString *, id> *_latest;
   BOOL _profileMismatch;
-  NSString *_telemetryPath;
+  std::shared_ptr<webrtc::cast_tuning::CastTelemetryWriter> _telemetryWriter;
   NSString *_sessionId;
   NSString *_configHash;
 }
 
-- (instancetype)initWithTelemetryPath:(NSString *)telemetryPath {
+- (instancetype)initWithTelemetryWriter:
+    (std::shared_ptr<webrtc::cast_tuning::CastTelemetryWriter>)writer {
   if ((self = [super init])) {
     _lock = [[NSLock alloc] init];
     _latest = @{};
-    _telemetryPath = [telemetryPath copy];
+    _telemetryWriter = std::move(writer);
     _sessionId = [NSUUID UUID].UUIDString;
     _configHash = @"";
   }
@@ -60,32 +64,37 @@ NSError *CastError(NSString *message) {
   [_lock unlock];
 }
 
+- (void)setSessionId:(NSString *)sessionId {
+  [_lock lock];
+  _sessionId = [sessionId copy];
+  [_lock unlock];
+}
+
 - (void)recordEvent:(NSDictionary<NSString *, id> *)event {
   [_lock lock];
   _latest = [event copy];
   _profileMismatch =
       _profileMismatch || [event[@"profile_mismatch"] boolValue];
-  if (_telemetryPath.length > 0) {
-    NSMutableDictionary<NSString *, id> *line = [event mutableCopy];
-    line[@"schema_version"] = @1;
-    line[@"session_id"] = _sessionId;
-    line[@"config_hash"] = _configHash;
-    NSData *json = [NSJSONSerialization dataWithJSONObject:line
+  if (_telemetryWriter) {
+    NSData *json = [NSJSONSerialization dataWithJSONObject:event
                                                        options:0
                                                          error:nil];
-    if (json) {
-      NSMutableData *payload = [json mutableCopy];
-      [payload appendData:[@"\n" dataUsingEncoding:NSUTF8StringEncoding]];
-      if (![[NSFileManager defaultManager] fileExistsAtPath:_telemetryPath]) {
-        [[NSFileManager defaultManager] createFileAtPath:_telemetryPath
-                                                contents:nil
-                                              attributes:nil];
-      }
-      NSFileHandle *file = [NSFileHandle fileHandleForWritingAtPath:_telemetryPath];
-      [file seekToEndOfFile];
-      [file writeData:payload];
-      [file closeFile];
-    }
+    NSString *payload = json
+                            ? [[NSString alloc] initWithData:json
+                                                    encoding:NSUTF8StringEncoding]
+                            : @"null";
+    NSString *eventType = event[@"event_type"] ?: @"encoder_evidence";
+    std::string eventTypeString = eventType.UTF8String ?: "encoder_evidence";
+    std::string sessionIdString = _sessionId.UTF8String ?: "";
+    std::string configHashString = _configHash.UTF8String ?: "";
+    std::string payloadString = payload.UTF8String ?: "null";
+    _telemetryWriter->Emit({
+        .event_type = eventTypeString,
+        .timestamp_ms = static_cast<int64_t>(NSDate.date.timeIntervalSince1970 * 1000),
+        .session_id = sessionIdString,
+        .config_hash = configHashString,
+        .revision = 0,
+        .payload_json = payloadString});
   }
   [_lock unlock];
 }
@@ -183,9 +192,11 @@ class ObjCVideoSourceAdapter final
 @interface RTCCastTuningConfiguration () {
   std::optional<webrtc::cast_tuning::CastTuningConfig> _nativeConfig;
   RTCCastTuningEncoderEvidence *_encoderEvidence;
+  std::shared_ptr<webrtc::cast_tuning::CastTelemetryWriter> _telemetryWriter;
 }
 - (const webrtc::cast_tuning::CastTuningConfig &)nativeConfig;
 - (RTCCastTuningEncoderEvidence *)encoderEvidence;
+- (std::shared_ptr<webrtc::cast_tuning::CastTelemetryWriter>)telemetryWriter;
 @end
 
 @implementation RTCCastTuningConfiguration
@@ -217,13 +228,15 @@ class ObjCVideoSourceAdapter final
   }
   RTCCastTuningConfiguration *result = [[self alloc] init];
   result->_nativeConfig = std::move(*config);
-  NSString *telemetryPath = result->_nativeConfig->telemetry.jsonl_path
-                                 ? [NSString stringWithUTF8String:
-                                       result->_nativeConfig->telemetry.jsonl_path
-                                           ->c_str()]
-                                 : nil;
+  if (result->_nativeConfig->telemetry.jsonl_path &&
+      !result->_nativeConfig->telemetry.jsonl_path->empty()) {
+    result->_telemetryWriter =
+        std::make_shared<webrtc::cast_tuning::CastTelemetryWriter>(
+            *result->_nativeConfig->telemetry.jsonl_path);
+  }
   result->_encoderEvidence =
-      [[RTCCastTuningEncoderEvidence alloc] initWithTelemetryPath:telemetryPath];
+      [[RTCCastTuningEncoderEvidence alloc]
+          initWithTelemetryWriter:result->_telemetryWriter];
   return result;
 }
 
@@ -252,6 +265,10 @@ class ObjCVideoSourceAdapter final
   return _encoderEvidence;
 }
 
+- (std::shared_ptr<webrtc::cast_tuning::CastTelemetryWriter>)telemetryWriter {
+  return _telemetryWriter;
+}
+
 - (NSString *)profile {
   return [NSString stringWithUTF8String:webrtc::cast_tuning::ProfileName(
                                             _nativeConfig->profile)];
@@ -265,7 +282,7 @@ class ObjCVideoSourceAdapter final
 - (NSString *)effectiveConfigHash {
   webrtc::cast_tuning::WebRtcCastTuningBackend backend(*_nativeConfig);
   webrtc::cast_tuning::CastTuningController controller(*_nativeConfig,
-                                                       &backend);
+                                                       &backend, _telemetryWriter);
   return [NSString
       stringWithUTF8String:controller.snapshot().effective_config_hash.c_str()];
 }
@@ -457,8 +474,10 @@ class ObjCVideoSourceAdapter final
     _backend = std::make_unique<webrtc::cast_tuning::WebRtcCastTuningBackend>(
         configuration.nativeConfig);
     _controller = std::make_unique<webrtc::cast_tuning::CastTuningController>(
-        configuration.nativeConfig, _backend.get());
+        configuration.nativeConfig, _backend.get(), configuration.telemetryWriter());
     _encoderEvidence = configuration.encoderEvidence;
+    [_encoderEvidence setSessionId:[NSString
+        stringWithUTF8String:_controller->snapshot().session_id.c_str()]];
   }
   return self;
 }

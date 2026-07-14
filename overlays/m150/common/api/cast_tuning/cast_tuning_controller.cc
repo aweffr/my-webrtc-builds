@@ -168,12 +168,18 @@ void MergeConfig(CastTuningConfig* config, const CastTuningLivePatch& patch) {
 }  // namespace
 
 CastTuningController::CastTuningController(CastTuningConfig config,
-                                           CastTuningBackend* backend)
-    : config_(std::move(config)), backend_(backend) {
+                                           CastTuningBackend* backend,
+                                           std::shared_ptr<CastTelemetryWriter>
+                                               telemetry_writer)
+    : config_(std::move(config)),
+      backend_(backend),
+      shared_telemetry_writer_(std::move(telemetry_writer)) {
   snapshot_.session_id = NewSessionId();
   snapshot_.profile = config_.profile;
   snapshot_.effective_config_hash = ConfigFingerprint(config_);
-  if (config_.telemetry.jsonl_path && !config_.telemetry.jsonl_path->empty()) {
+  if (shared_telemetry_writer_) {
+    EmitConfigEvent("config_applied", "initial");
+  } else if (config_.telemetry.jsonl_path && !config_.telemetry.jsonl_path->empty()) {
     telemetry_writer_ =
         std::make_unique<CastTelemetryWriter>(*config_.telemetry.jsonl_path);
     EmitConfigEvent("config_applied", "initial");
@@ -184,17 +190,20 @@ CastTuningController::~CastTuningController() = default;
 
 void CastTuningController::EmitConfigEvent(const char* event_type,
                                            const std::string& detail) {
-  if (!telemetry_writer_)
+  CastTelemetryWriter* writer = shared_telemetry_writer_
+                                    ? shared_telemetry_writer_.get()
+                                    : telemetry_writer_.get();
+  if (!writer)
     return;
   std::ostringstream payload;
   payload << "{\"profile\":\"" << ProfileName(snapshot_.profile)
           << "\",\"detail\":\"" << detail << "\"}";
-  telemetry_writer_->Emit({.event_type = event_type,
-                           .timestamp_ms = NowMilliseconds(),
-                           .session_id = snapshot_.session_id,
-                           .config_hash = snapshot_.effective_config_hash,
-                           .revision = snapshot_.revision,
-                           .payload_json = payload.str()});
+  writer->Emit({.event_type = event_type,
+                .timestamp_ms = NowMilliseconds(),
+                .session_id = snapshot_.session_id,
+                .config_hash = snapshot_.effective_config_hash,
+                .revision = snapshot_.revision,
+                .payload_json = payload.str()});
 }
 
 CastApplyResult CastTuningController::Reject(ApplyScope scope,

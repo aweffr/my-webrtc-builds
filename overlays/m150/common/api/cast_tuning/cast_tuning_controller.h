@@ -68,7 +68,10 @@ class CastTuningObserver {
 
 class CastTuningController {
  public:
-  CastTuningController(CastTuningConfig config, CastTuningBackend* backend);
+  CastTuningController(
+      CastTuningConfig config,
+      CastTuningBackend* backend,
+      std::shared_ptr<CastTelemetryWriter> telemetry_writer = nullptr);
   ~CastTuningController();
 
   CastApplyResult ApplyLivePatch(const CastTuningLivePatch& patch);
@@ -88,6 +91,7 @@ class CastTuningController {
   CastTuningObserver* observer_ = nullptr;
   CastTuningSnapshot snapshot_;
   std::unique_ptr<CastTelemetryWriter> telemetry_writer_;
+  std::shared_ptr<CastTelemetryWriter> shared_telemetry_writer_;
 };
 
 }  // namespace webrtc::cast_tuning

@@ -146,8 +146,6 @@ def main(argv: list[str] | None = None) -> int:
             xcframework_metadata=args.xcframework_metadata.resolve(),
             output_dir=args.output_dir.resolve(),
             builder_commit=args.builder_commit,
-            android_workflow_run_id=args.android_workflow_run_id,
-            android_artifact_digest=args.android_artifact_digest,
             release_date=args.release_date,
             platform=args.platform,
         )
@@ -165,6 +163,8 @@ def main(argv: list[str] | None = None) -> int:
             macos_probe_evidence=args.macos_probe_evidence.resolve(),
             output_dir=args.output_dir.resolve(),
             builder_commit=args.builder_commit,
+            android_workflow_run_id=args.android_workflow_run_id,
+            android_artifact_digest=args.android_artifact_digest,
             release_date=args.release_date,
             preview_revision=args.preview_revision,
         )
