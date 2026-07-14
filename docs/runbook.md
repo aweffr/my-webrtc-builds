@@ -40,7 +40,8 @@ gh workflow run package-macos-xcframework.yml \
   -R aweffr/my-webrtc-builds \
   --ref main \
   -f x64_run_id=MACOS_X64_RUN_ID \
-  -f arm64_run_id=MACOS_ARM64_RUN_ID
+  -f arm64_run_id=MACOS_ARM64_RUN_ID \
+  -f builder_commit=FULL_BUILDER_COMMIT
 ```
 
 The composition step rejects mismatched WebRTC source, builder commit,
@@ -60,7 +61,8 @@ gh workflow run publish-release.yml \
   -f macos_x64_run_id=MACOS_X64_RUN_ID \
   -f macos_arm64_run_id=MACOS_ARM64_RUN_ID \
   -f windows_x64_run_id=WINDOWS_X64_RUN_ID \
-  -f xcframework_run_id=XCFRAMEWORK_RUN_ID
+  -f xcframework_run_id=XCFRAMEWORK_RUN_ID \
+  -f builder_commit=FULL_BUILDER_COMMIT
 ```
 
 The release workflow validates every input artifact before publishing and
@@ -70,6 +72,53 @@ are provenance based:
 ```text
 webrtc-m150.7871.3-<builder-short-sha>-YYYYMMDD-all
 ```
+
+The Android artifact now contains the raw tar, standalone arm64-v8a AAR,
+AAR-only smoke APK, and hosted SHA-256 record. Future stable releases publish
+the AAR as a first-class asset beside the Android tar.
+
+## Validate and publish the macOS/Android preview
+
+After the three platform builds and XCFramework composition succeed, download
+the exact GitHub Actions outputs and run both local gates:
+
+```bash
+tools/android-aar-smoke.sh ANDROID_RUN_ID
+
+gh run download XCFRAMEWORK_RUN_ID \
+  -R aweffr/my-webrtc-builds \
+  -n WebRTC-m150-macos-universal-xcframework \
+  -D /tmp/webrtc-m150-xcframework
+tools/run-macos-videotoolbox-probe.sh \
+  /tmp/webrtc-m150-xcframework/WebRTC-m150-macos-universal.xcframework.zip
+```
+
+The Android script must finish on the local API 31 arm64-v8a emulator and emit
+an evidence JSON path. The macOS script must run on a real Apple Silicon Mac,
+prove both ordinary and low-latency 1920x1080 H.264 session creation, and show
+an RTVC Encoder ID for low-latency mode. macOS x64 remains hosted static
+validation only and is recorded explicitly as lacking hardware runtime
+coverage.
+
+Pass the compact JSON contents to the scoped preview workflow:
+
+```bash
+gh workflow run publish-macos-android-preview.yml \
+  -R aweffr/my-webrtc-builds \
+  --ref main \
+  -f android_run_id=ANDROID_RUN_ID \
+  -f macos_x64_run_id=MACOS_X64_RUN_ID \
+  -f macos_arm64_run_id=MACOS_ARM64_RUN_ID \
+  -f xcframework_run_id=XCFRAMEWORK_RUN_ID \
+  -f builder_commit=FULL_BUILDER_COMMIT \
+  -f preview_revision=1 \
+  -f android_smoke_evidence_json="$(jq -c . ANDROID_EVIDENCE_JSON)" \
+  -f macos_probe_evidence_json="$(jq -c . MACOS_EVIDENCE_JSON)"
+```
+
+The workflow publishes exactly five binaries (Android tar/AAR, both macOS thin
+packages, and the XCFramework) plus `release-manifest.json` and `SHA256SUMS`,
+then downloads the pre-release assets and verifies their checksums again.
 
 ## Local checks
 

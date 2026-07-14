@@ -5,7 +5,11 @@ from pathlib import Path
 
 from .build import build_webrtc
 from .commands import CommandRunner
-from .compose import compose_macos_xcframework, create_release_manifest
+from .compose import (
+    compose_macos_xcframework,
+    create_preview_release_manifest,
+    create_release_manifest,
+)
 from .config import TARGETS, get_target
 from .observability import BuildJournal, collect_toolchain
 from .package import stage_and_package
@@ -40,12 +44,30 @@ def _parser() -> argparse.ArgumentParser:
     release = subparsers.add_parser("release-manifest", help="validate and compose release data")
     for target in ("android", "ios", "macos-x64", "macos-arm64", "windows-x64"):
         release.add_argument(f"--{target}-package", required=True, type=Path)
+    release.add_argument("--android-aar", required=True, type=Path)
     release.add_argument("--xcframework", required=True, type=Path)
     release.add_argument("--xcframework-metadata", required=True, type=Path)
     release.add_argument("--output-dir", required=True, type=Path)
     release.add_argument("--builder-commit", required=True)
     release.add_argument("--release-date", required=True)
     release.add_argument("--platform", required=True)
+
+    preview = subparsers.add_parser(
+        "preview-release-manifest",
+        help="validate Android/macOS runtime evidence and compose preview release data",
+    )
+    preview.add_argument("--android-package", required=True, type=Path)
+    preview.add_argument("--android-aar", required=True, type=Path)
+    preview.add_argument("--macos-x64-package", required=True, type=Path)
+    preview.add_argument("--macos-arm64-package", required=True, type=Path)
+    preview.add_argument("--xcframework", required=True, type=Path)
+    preview.add_argument("--xcframework-metadata", required=True, type=Path)
+    preview.add_argument("--android-smoke-evidence", required=True, type=Path)
+    preview.add_argument("--macos-probe-evidence", required=True, type=Path)
+    preview.add_argument("--output-dir", required=True, type=Path)
+    preview.add_argument("--builder-commit", required=True)
+    preview.add_argument("--release-date", required=True)
+    preview.add_argument("--preview-revision", required=True, type=int)
     return parser
 
 
@@ -117,12 +139,30 @@ def main(argv: list[str] | None = None) -> int:
                 "macos-arm64": args.macos_arm64_package.resolve(),
                 "windows-x64": args.windows_x64_package.resolve(),
             },
+            android_aar=args.android_aar.resolve(),
             xcframework=args.xcframework.resolve(),
             xcframework_metadata=args.xcframework_metadata.resolve(),
             output_dir=args.output_dir.resolve(),
             builder_commit=args.builder_commit,
             release_date=args.release_date,
             platform=args.platform,
+        )
+        print(manifest)
+        return 0
+    if args.command == "preview-release-manifest":
+        manifest = create_preview_release_manifest(
+            android_package=args.android_package.resolve(),
+            android_aar=args.android_aar.resolve(),
+            macos_x64_package=args.macos_x64_package.resolve(),
+            macos_arm64_package=args.macos_arm64_package.resolve(),
+            xcframework=args.xcframework.resolve(),
+            xcframework_metadata=args.xcframework_metadata.resolve(),
+            android_smoke_evidence=args.android_smoke_evidence.resolve(),
+            macos_probe_evidence=args.macos_probe_evidence.resolve(),
+            output_dir=args.output_dir.resolve(),
+            builder_commit=args.builder_commit,
+            release_date=args.release_date,
+            preview_revision=args.preview_revision,
         )
         print(manifest)
         return 0

@@ -1,12 +1,15 @@
 import json
+import hashlib
 import tempfile
 import unittest
+import zipfile
 from dataclasses import replace
 from pathlib import Path
 
 from builder.compose import (
     CompositionError,
     compose_macos_xcframework,
+    create_preview_release_manifest,
     create_release_manifest,
     prepare_macos_inputs,
 )
@@ -46,12 +49,51 @@ def create_package(
         (framework / "WebRTC").write_bytes(target.encode())
         (framework / "Headers").mkdir()
         (framework / "Headers" / "WebRTC.h").write_text(framework_header)
+    elif target == "android":
+        (root / "jar").mkdir()
+        (root / "jar" / "webrtc.jar").write_bytes(b"android-classes")
+        jni = root / "jni" / "arm64-v8a"
+        jni.mkdir(parents=True)
+        (jni / "libjingle_peerconnection_so.so").write_bytes(b"android-jni")
     archive = directory / package_filename(target)
     if target == "windows-x64":
         create_zip(root, archive, arcname="webrtc")
     else:
         create_tar_gz(root, archive, arcname="webrtc")
     return archive
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def create_android_aar(directory: Path) -> Path:
+    aar = directory / "webrtc-m150-android-arm64-v8a.aar"
+    with zipfile.ZipFile(aar, "w") as stream:
+        stream.writestr("AndroidManifest.xml", "<manifest />")
+        stream.writestr("classes.jar", b"android-classes")
+        stream.writestr(
+            "jni/arm64-v8a/libjingle_peerconnection_so.so", b"android-jni"
+        )
+    return aar
+
+
+def create_xcframework_inputs(directory: Path) -> tuple[Path, Path]:
+    xcframework = directory / "WebRTC-m150-macos-universal.xcframework.zip"
+    xcframework.write_bytes(b"xcframework")
+    metadata = directory / "xcframework-metadata.json"
+    metadata.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "target": "macos-universal",
+                "builder_commit": "a" * 40,
+                "source": build_metadata("macos-x64").source,
+                "header_manifest": "same-headers",
+            }
+        )
+    )
+    return xcframework, metadata
 
 
 class MacOSInputTests(unittest.TestCase):
@@ -163,7 +205,7 @@ class MacOSInputTests(unittest.TestCase):
 
 
 class ReleaseManifestTests(unittest.TestCase):
-    def test_release_requires_exact_five_platform_packages_and_xcframework(self) -> None:
+    def test_release_requires_platform_packages_android_aar_and_xcframework(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             packages = {
@@ -192,6 +234,7 @@ class ReleaseManifestTests(unittest.TestCase):
             )
             manifest = create_release_manifest(
                 packages=packages,
+                android_aar=create_android_aar(root),
                 xcframework=xcframework,
                 xcframework_metadata=xc_metadata,
                 output_dir=root / "release",
@@ -201,7 +244,11 @@ class ReleaseManifestTests(unittest.TestCase):
             )
             payload = json.loads(manifest.read_text())
         self.assertEqual(payload["tag"], "webrtc-m150.7871.3-aaaaaaa-20260712-all")
-        self.assertEqual(len(payload["assets"]), 6)
+        self.assertEqual(len(payload["assets"]), 7)
+        self.assertIn(
+            "webrtc-m150-android-arm64-v8a.aar",
+            {asset["name"] for asset in payload["assets"]},
+        )
 
     def test_release_rejects_workflow_commit_different_from_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -233,12 +280,155 @@ class ReleaseManifestTests(unittest.TestCase):
             with self.assertRaisesRegex(CompositionError, "workflow builder commit"):
                 create_release_manifest(
                     packages=packages,
+                    android_aar=create_android_aar(root),
                     xcframework=xcframework,
                     xcframework_metadata=xc_metadata,
                     output_dir=root / "release",
                     builder_commit="b" * 40,
                     release_date="20260712",
                     platform="all",
+                )
+
+
+class PreviewReleaseManifestTests(unittest.TestCase):
+    def test_preview_requires_bound_android_and_macos_runtime_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            android = create_package(root, "android")
+            android_aar = create_android_aar(root)
+            macos_x64 = create_package(root, "macos-x64")
+            macos_arm64 = create_package(root, "macos-arm64")
+            xcframework, xcframework_metadata = create_xcframework_inputs(root)
+            android_evidence = root / "android-evidence.json"
+            android_evidence.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "workflow_run_id": 123,
+                        "builder_commit": "a" * 40,
+                        "aar_sha256": sha256(android_aar),
+                        "android_api_level": 31,
+                        "abi": "arm64-v8a",
+                        "marker": "AAR_SMOKE_OK",
+                    }
+                )
+            )
+            macos_evidence = root / "macos-evidence.json"
+            macos_evidence.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "xcframework_zip_sha256": sha256(xcframework),
+                        "hardware_model": "Mac16,7",
+                        "os_version": "26.5.2",
+                        "macos_x64_hardware_runtime_verified": False,
+                        "modes": [
+                            {
+                                "mode": "normal",
+                                "session_status": "success",
+                                "encoder_id": "com.apple.videotoolbox.videoencoder.ave.avc",
+                                "sps_profile": "BASELINE",
+                                "profile_mismatch": False,
+                            },
+                            {
+                                "mode": "low_latency",
+                                "session_status": "success",
+                                "encoder_id": "com.apple.videotoolbox.videoencoder.h264.rtvc",
+                                "sps_profile": "HIGH",
+                                "profile_mismatch": False,
+                            },
+                        ],
+                    }
+                )
+            )
+
+            manifest = create_preview_release_manifest(
+                android_package=android,
+                android_aar=android_aar,
+                macos_x64_package=macos_x64,
+                macos_arm64_package=macos_arm64,
+                xcframework=xcframework,
+                xcframework_metadata=xcframework_metadata,
+                android_smoke_evidence=android_evidence,
+                macos_probe_evidence=macos_evidence,
+                output_dir=root / "preview",
+                builder_commit="a" * 40,
+                release_date="20260714",
+                preview_revision=1,
+            )
+            payload = json.loads(manifest.read_text())
+
+        self.assertEqual(
+            payload["tag"],
+            "webrtc-m150.7871.3-aaaaaaa-20260714-macos-android-preview.1",
+        )
+        self.assertEqual(
+            {asset["name"] for asset in payload["assets"]},
+            {
+                "webrtc-m150-android-arm64-v8a.tar.gz",
+                "webrtc-m150-android-arm64-v8a.aar",
+                "webrtc-m150-macos-x64.tar.gz",
+                "webrtc-m150-macos-arm64.tar.gz",
+                "WebRTC-m150-macos-universal.xcframework.zip",
+            },
+        )
+        self.assertFalse(
+            payload["verification"]["macos_x64_hardware_runtime_verified"]
+        )
+
+    def test_preview_rejects_evidence_for_different_aar(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            android_aar = create_android_aar(root)
+            xcframework, xcframework_metadata = create_xcframework_inputs(root)
+            android_evidence = root / "android-evidence.json"
+            android_evidence.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "workflow_run_id": 123,
+                        "builder_commit": "a" * 40,
+                        "aar_sha256": "0" * 64,
+                        "android_api_level": 31,
+                        "abi": "arm64-v8a",
+                        "marker": "AAR_SMOKE_OK",
+                    }
+                )
+            )
+            macos_evidence = root / "macos-evidence.json"
+            macos_evidence.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "xcframework_zip_sha256": sha256(xcframework),
+                        "hardware_model": "Mac16,7",
+                        "os_version": "26.5.2",
+                        "macos_x64_hardware_runtime_verified": False,
+                        "modes": [
+                            {"mode": "normal", "session_status": "success"},
+                            {
+                                "mode": "low_latency",
+                                "session_status": "success",
+                                "encoder_id": "h264.rtvc",
+                            },
+                        ],
+                    }
+                )
+            )
+            with self.assertRaisesRegex(CompositionError, "AAR SHA"):
+                create_preview_release_manifest(
+                    android_package=create_package(root, "android"),
+                    android_aar=android_aar,
+                    macos_x64_package=create_package(root, "macos-x64"),
+                    macos_arm64_package=create_package(root, "macos-arm64"),
+                    xcframework=xcframework,
+                    xcframework_metadata=xcframework_metadata,
+                    android_smoke_evidence=android_evidence,
+                    macos_probe_evidence=macos_evidence,
+                    output_dir=root / "preview",
+                    builder_commit="a" * 40,
+                    release_date="20260714",
+                    preview_revision=1,
                 )
 
     def test_release_rejects_missing_platform(self) -> None:
@@ -252,6 +442,7 @@ class ReleaseManifestTests(unittest.TestCase):
             with self.assertRaisesRegex(CompositionError, "exact platform set"):
                 create_release_manifest(
                     packages=packages,
+                    android_aar=create_android_aar(root),
                     xcframework=xcframework,
                     xcframework_metadata=xc_metadata,
                     output_dir=root / "release",

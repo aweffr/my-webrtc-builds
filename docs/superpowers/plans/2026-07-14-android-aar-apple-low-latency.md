@@ -344,7 +344,7 @@ GitHub Actions, GitHub CLI
 - Create: `tools/android-aar-smoke.sh`
 - Modify: `.github/workflows/build-android.yml`
 
-- [ ] **Step 1: Create a minimal AAR-only consumer**
+- [x] **Step 1: Create a minimal AAR-only consumer**
 
   The app repository declares only the local AAR and AndroidX-free platform
   APIs. Its activity executes this runtime path and writes `AAR_SMOKE_OK` only
@@ -365,15 +365,16 @@ GitHub Actions, GitHub CLI
   factory.dispose();
   ```
 
-- [ ] **Step 2: Make hosted CI compile and inspect the APK**
+- [x] **Step 2: Make hosted CI compile and inspect the APK**
 
-  `build-android.yml` keeps the runner Android SDK, installs the pinned Gradle
-  version through a SHA-pinned action, copies the produced AAR to
+  `build-android.yml` uses the WebRTC checkout Android SDK, runs the checked-in
+  SHA-pinned Gradle 9.4.1 wrapper with JDK 21 (the M150 jar is class-file
+  version 65), copies the produced AAR to
   `smoke/android-aar/app/libs/`, builds `assembleDebug`, and verifies with
   `unzip -l` that the APK includes
   `lib/arm64-v8a/libjingle_peerconnection_so.so`.
 
-- [ ] **Step 3: Upload one evidence-bearing workflow artifact**
+- [x] **Step 3: Upload one evidence-bearing workflow artifact**
 
   Upload these exact files under artifact name
   `webrtc-m150-android-arm64-v8a` with compression level 0:
@@ -385,7 +386,7 @@ GitHub Actions, GitHub CLI
   diagnostics/android-artifact-sha256.txt
   ```
 
-- [ ] **Step 4: Implement the local download-and-run evidence script**
+- [x] **Step 4: Implement the local download-and-run evidence script**
 
   `tools/android-aar-smoke.sh RUN_ID` uses `gh run download` for the named
   artifact, computes artifact file SHA-256 values, starts the existing arm64
@@ -394,7 +395,7 @@ GitHub Actions, GitHub CLI
   APK SHA-256, ABI, API level, AVD name, and bounded logcat output. Any missing
   field, timeout, non-arm64 ABI, or absent marker exits non-zero.
 
-- [ ] **Step 5: Validate workflow syntax and script behavior**
+- [x] **Step 5: Validate workflow syntax and script behavior**
 
   ```bash
   actionlint .github/workflows/build-android.yml
@@ -404,7 +405,7 @@ GitHub Actions, GitHub CLI
 
   Expected: all commands pass.
 
-- [ ] **Step 6: Commit Android smoke infrastructure**
+- [x] **Step 6: Commit Android smoke infrastructure**
 
   ```bash
   git add smoke/android-aar tools/android-aar-smoke.sh \
@@ -415,13 +416,12 @@ GitHub Actions, GitHub CLI
 ### Task 5: Add final-framework VideoToolbox hardware probe
 
 **Files:**
-- Create: `tools/macos-videotoolbox-probe/Package.swift`
-- Create: `tools/macos-videotoolbox-probe/Sources/Probe/main.swift`
+- Create: `tools/macos-videotoolbox-probe/main.mm`
 - Create: `tools/run-macos-videotoolbox-probe.sh`
 - Modify: `.github/workflows/build-macos-arm64.yml`
 - Modify: `.github/workflows/build-macos-x64.yml`
 
-- [ ] **Step 1: Implement a probe against the packaged framework**
+- [x] **Step 1: Implement a probe against the packaged framework**
 
   The runner accepts the downloaded XCFramework zip, verifies its SHA-256,
   extracts it safely, links the arm64 framework, creates normal and
@@ -434,31 +434,32 @@ GitHub Actions, GitHub CLI
   negotiated_profile, sps_profile, profile_mismatch
   ```
 
-- [ ] **Step 2: Enforce real-hardware evidence**
+- [x] **Step 2: Enforce real-hardware evidence**
 
   `tools/run-macos-videotoolbox-probe.sh` rejects virtualized hardware evidence,
   requires `arm64`, requires successful normal and low-latency sessions, and
   requires the low-latency encoder ID to be recorded. A Baseline/High mismatch
   is accepted only when `profile_mismatch=true` and the warning is present.
 
-- [ ] **Step 3: Keep hosted x64 verification explicit**
+- [x] **Step 3: Keep hosted x64 verification explicit**
 
   Both macOS workflows verify compilation, package layout, architecture, and
   the low-latency linked symbol. Their summaries state that hosted VM results
   are not real VideoToolbox hardware evidence; the preview manifest records
   `macos_x64_hardware_runtime_verified=false`.
 
-- [ ] **Step 4: Validate scripts and local contract tests**
+- [x] **Step 4: Validate scripts and local contract tests**
 
   ```bash
   bash -n tools/run-macos-videotoolbox-probe.sh
-  swift build --package-path tools/macos-videotoolbox-probe
+  xcrun clang++ -fsyntax-only tools/macos-videotoolbox-probe/main.mm \
+    -F /path/to/WebRTC.framework/.. -framework WebRTC
   python3 -m unittest discover -s tests -v
   ```
 
   Expected: syntax/build/tests pass on the local Mac.
 
-- [ ] **Step 5: Commit probe infrastructure**
+- [x] **Step 5: Commit probe infrastructure**
 
   ```bash
   git add tools/macos-videotoolbox-probe tools/run-macos-videotoolbox-probe.sh \
@@ -478,7 +479,7 @@ GitHub Actions, GitHub CLI
 - Create: `.github/workflows/publish-macos-android-preview.yml`
 - Modify: `docs/runbook.md`
 
-- [ ] **Step 1: Write RED scoped-manifest tests**
+- [x] **Step 1: Write RED scoped-manifest tests**
 
   Require exactly these binary assets from one builder commit:
 
@@ -496,7 +497,7 @@ GitHub Actions, GitHub CLI
   XCFramework, x64 hardware coverage is false, and extra iOS/Windows assets are
   rejected.
 
-- [ ] **Step 2: Run scoped-release RED tests**
+- [x] **Step 2: Run scoped-release RED tests**
 
   ```bash
   python3 -m unittest tests.test_compose tests.test_metadata -v
@@ -505,15 +506,16 @@ GitHub Actions, GitHub CLI
   Expected before implementation: the composer still requires all five stable
   platform packages and has no preview revision/evidence API.
 
-- [ ] **Step 3: Add a separate preview manifest API**
+- [x] **Step 3: Add a separate preview manifest API**
 
-  Preserve `create_release_manifest()` unchanged for stable `-all`. Add
+  Keep the stable `-all` platform scope and add the Android AAR to its future
+  app-consumable asset contract. Add
   `create_preview_release_manifest()` with explicit Android tar/AAR, macOS thin
   packages, XCFramework metadata, Android smoke JSON, macOS probe JSON, builder
   commit, date, and positive preview revision. It writes manifest schema 1,
   assets with SHA-256/size, evidence digests, and coverage flags.
 
-- [ ] **Step 4: Add the preview CLI and workflow**
+- [x] **Step 4: Add the preview CLI and workflow**
 
   The new workflow accepts Android, macOS x64, macOS arm64, and XCFramework run
   IDs; builder commit; preview revision; and paths/digests for the two locally
@@ -521,7 +523,7 @@ GitHub Actions, GitHub CLI
   creates a GitHub pre-release with `--prerelease`, uploads only the agreed
   seven assets, downloads them again, and rechecks `SHA256SUMS` before success.
 
-- [ ] **Step 5: Validate release behavior**
+- [x] **Step 5: Validate release behavior**
 
   ```bash
   python3 -m unittest tests.test_compose tests.test_metadata -v
@@ -531,7 +533,7 @@ GitHub Actions, GitHub CLI
 
   Expected: stable all-platform tests remain green and preview tests pass.
 
-- [ ] **Step 6: Commit scoped release support**
+- [x] **Step 6: Commit scoped release support**
 
   ```bash
   git add builder/compose.py builder/__main__.py builder/metadata.py \

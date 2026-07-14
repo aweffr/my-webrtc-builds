@@ -3,12 +3,14 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
 from .metadata import BuildMetadata, MetadataError, load_metadata, release_tag, validate_compatible
 from .package import header_manifest, package_filename, safe_extract_archive
+from .verify import VerificationError, verify_android_aar
 
 
 class CompositionError(RuntimeError):
@@ -186,9 +188,181 @@ def _load_xcframework_metadata(path: Path) -> dict[str, object]:
     return payload
 
 
+def _load_json_object(path: Path, description: str) -> dict[str, object]:
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise CompositionError(f"cannot read {description}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise CompositionError(f"{description} root must be an object")
+    return payload
+
+
+def _validate_preview_xcframework(
+    metadata_path: Path,
+    reference: BuildMetadata,
+    macos_metadata: BuildMetadata,
+) -> None:
+    metadata = _load_xcframework_metadata(metadata_path)
+    if metadata.get("schema_version") != 1 or metadata.get("target") != "macos-universal":
+        raise CompositionError("invalid XCFramework metadata identity")
+    if metadata.get("builder_commit") != reference.builder_commit:
+        raise CompositionError("XCFramework uses a different builder commit")
+    if metadata.get("source") != reference.source:
+        raise CompositionError("XCFramework uses a different WebRTC source")
+    if metadata.get("header_manifest") != macos_metadata.header_manifest:
+        raise CompositionError("XCFramework uses a different header manifest")
+
+
+def create_preview_release_manifest(
+    *,
+    android_package: Path,
+    android_aar: Path,
+    macos_x64_package: Path,
+    macos_arm64_package: Path,
+    xcframework: Path,
+    xcframework_metadata: Path,
+    android_smoke_evidence: Path,
+    macos_probe_evidence: Path,
+    output_dir: Path,
+    builder_commit: str,
+    release_date: str,
+    preview_revision: int,
+) -> Path:
+    if not isinstance(preview_revision, int) or preview_revision < 1:
+        raise CompositionError("preview revision must be a positive integer")
+    packages = {
+        "android": android_package,
+        "macos-x64": macos_x64_package,
+        "macos-arm64": macos_arm64_package,
+    }
+    output_dir.mkdir(parents=True, exist_ok=True)
+    validation_dir = output_dir / ".preview-validation"
+    shutil.rmtree(validation_dir, ignore_errors=True)
+    metadata: dict[str, BuildMetadata] = {}
+    try:
+        for target, archive in packages.items():
+            expected_name = package_filename(target)
+            if archive.name != expected_name:
+                raise CompositionError(
+                    f"unexpected package filename for {target}: {archive.name}; "
+                    f"expected {expected_name}"
+                )
+            destination = validation_dir / target
+            safe_extract_archive(archive, destination)
+            item = load_metadata(destination / "webrtc" / "metadata.json")
+            if item.target != target:
+                raise CompositionError(
+                    f"package key {target} contains metadata target {item.target}"
+                )
+            metadata[target] = item
+        validate_compatible(metadata.values())
+        try:
+            verify_android_aar(android_aar, validation_dir / "android" / "webrtc")
+        except (OSError, zipfile.BadZipFile, VerificationError) as exc:
+            raise CompositionError(f"Android AAR validation failed: {exc}") from exc
+    except MetadataError as exc:
+        raise CompositionError(str(exc)) from exc
+    finally:
+        shutil.rmtree(validation_dir, ignore_errors=True)
+
+    reference = metadata["android"]
+    if reference.builder_commit != builder_commit:
+        raise CompositionError(
+            "workflow builder commit differs from preview package builder commit"
+        )
+    if android_aar.name != "webrtc-m150-android-arm64-v8a.aar":
+        raise CompositionError(f"unexpected Android AAR filename: {android_aar.name}")
+    if xcframework.name != "WebRTC-m150-macos-universal.xcframework.zip":
+        raise CompositionError(f"unexpected XCFramework filename: {xcframework.name}")
+    _validate_preview_xcframework(
+        xcframework_metadata, reference, metadata["macos-x64"]
+    )
+
+    android_evidence = _load_json_object(
+        android_smoke_evidence, "Android AAR smoke evidence"
+    )
+    if android_evidence.get("schema_version") != 1:
+        raise CompositionError("Android smoke evidence schema_version must be 1")
+    if android_evidence.get("builder_commit") != builder_commit:
+        raise CompositionError("Android smoke evidence uses a different builder commit")
+    if android_evidence.get("aar_sha256") != _sha256(android_aar):
+        raise CompositionError("Android smoke evidence AAR SHA does not match preview asset")
+    if (
+        android_evidence.get("marker") != "AAR_SMOKE_OK"
+        or android_evidence.get("android_api_level") != 31
+        or android_evidence.get("abi") != "arm64-v8a"
+        or not isinstance(android_evidence.get("workflow_run_id"), int)
+    ):
+        raise CompositionError("Android smoke evidence does not satisfy the runtime gate")
+
+    macos_evidence = _load_json_object(
+        macos_probe_evidence, "macOS VideoToolbox probe evidence"
+    )
+    if macos_evidence.get("schema_version") != 1:
+        raise CompositionError("macOS probe evidence schema_version must be 1")
+    if macos_evidence.get("xcframework_zip_sha256") != _sha256(xcframework):
+        raise CompositionError(
+            "macOS probe evidence XCFramework SHA does not match preview asset"
+        )
+    modes = macos_evidence.get("modes")
+    if not isinstance(modes, list):
+        raise CompositionError("macOS probe evidence modes must be an array")
+    by_mode = {
+        item.get("mode"): item for item in modes if isinstance(item, dict)
+    }
+    if set(by_mode) != {"normal", "low_latency"} or any(
+        item.get("session_status") != "success" for item in by_mode.values()
+    ):
+        raise CompositionError("macOS probe evidence requires two successful modes")
+    low_latency_encoder_id = by_mode["low_latency"].get("encoder_id")
+    if not isinstance(low_latency_encoder_id, str) or ".rtvc" not in low_latency_encoder_id:
+        raise CompositionError("macOS low-latency probe did not select an RTVC encoder")
+    if macos_evidence.get("macos_x64_hardware_runtime_verified") is not False:
+        raise CompositionError(
+            "preview evidence must explicitly record missing x64 hardware runtime coverage"
+        )
+
+    assets = [android_package, android_aar, macos_x64_package, macos_arm64_package, xcframework]
+    tag = release_tag(builder_commit, release_date, "macos-android")
+    tag = f"{tag}-preview.{preview_revision}"
+    payload = {
+        "schema_version": 1,
+        "tag": tag,
+        "source": dict(reference.source),
+        "builder_commit": reference.builder_commit,
+        "release_date": release_date,
+        "platform": "macos-android",
+        "preview_revision": preview_revision,
+        "assets": [
+            {"name": path.name, "sha256": _sha256(path), "size": path.stat().st_size}
+            for path in sorted(assets, key=lambda item: item.name)
+        ],
+        "verification": {
+            "android_workflow_run_id": android_evidence["workflow_run_id"],
+            "android_api_level": android_evidence["android_api_level"],
+            "android_abi": android_evidence["abi"],
+            "android_smoke_evidence_sha256": _sha256(android_smoke_evidence),
+            "macos_hardware_model": macos_evidence.get("hardware_model"),
+            "macos_os_version": macos_evidence.get("os_version"),
+            "macos_probe_evidence_sha256": _sha256(macos_probe_evidence),
+            "macos_x64_hardware_runtime_verified": False,
+        },
+    }
+    manifest = output_dir / "release-manifest.json"
+    manifest.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    checksum_entries = [
+        *(f"{item['sha256']}  {item['name']}" for item in payload["assets"]),
+        f"{_sha256(manifest)}  {manifest.name}",
+    ]
+    (output_dir / "SHA256SUMS").write_text("\n".join(checksum_entries) + "\n")
+    return manifest
+
+
 def create_release_manifest(
     *,
     packages: Mapping[str, Path],
+    android_aar: Path,
     xcframework: Path,
     xcframework_metadata: Path,
     output_dir: Path,
@@ -221,11 +395,20 @@ def create_release_manifest(
                 )
             metadata.append(item)
         validate_compatible(metadata)
+        try:
+            verify_android_aar(android_aar, validation_dir / "android" / "webrtc")
+        except (OSError, zipfile.BadZipFile, VerificationError) as exc:
+            raise CompositionError(f"Android AAR validation failed: {exc}") from exc
     except MetadataError as exc:
         raise CompositionError(str(exc)) from exc
     finally:
         shutil.rmtree(validation_dir, ignore_errors=True)
 
+    expected_aar_name = "webrtc-m150-android-arm64-v8a.aar"
+    if android_aar.name != expected_aar_name:
+        raise CompositionError(
+            f"unexpected Android AAR filename {android_aar.name}; expected {expected_aar_name}"
+        )
     expected_xcframework_name = "WebRTC-m150-macos-universal.xcframework.zip"
     if xcframework.name != expected_xcframework_name:
         raise CompositionError(
@@ -247,7 +430,7 @@ def create_release_manifest(
     if xc_metadata.get("header_manifest") != mac_metadata.header_manifest:
         raise CompositionError("XCFramework uses a different header manifest")
 
-    assets = [*packages.values(), xcframework]
+    assets = [*packages.values(), android_aar, xcframework]
     payload = {
         "schema_version": 1,
         "tag": release_tag(builder_commit, release_date, platform),

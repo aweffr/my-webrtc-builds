@@ -76,12 +76,49 @@ jobs:
             --builder-commit "$GITHUB_SHA" \
             2>&1 | tee "$DIAGNOSTICS_DIR/build.log"
 
-      - name: Upload binary package
+      - name: Set up Java 21 for AAR consumer
         if: steps.build.outcome == 'success'
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Compile AAR-only consumer APK
+        id: consumer
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          ANDROID_HOME: ${{ env.WORK_DIR }}/checkout/src/third_party/android_sdk/public
+        run: |
+          set -euxo pipefail
+          mkdir -p smoke/android-aar/app/libs
+          cp \
+            "$DIST_DIR/webrtc-m150-android-arm64-v8a.aar" \
+            smoke/android-aar/app/libs/webrtc-m150-android-arm64-v8a.aar
+          smoke/android-aar/gradlew \
+            --no-daemon \
+            --project-dir smoke/android-aar \
+            :app:assembleDebug \
+            2>&1 | tee "$DIAGNOSTICS_DIR/android-aar-consumer-build.log"
+          APK="smoke/android-aar/app/build/outputs/apk/debug/app-debug.apk"
+          unzip -Z1 "$APK" | grep -Fx \
+            "lib/arm64-v8a/libjingle_peerconnection_so.so"
+          shasum -a 256 \
+            "$DIST_DIR/webrtc-m150-android-arm64-v8a.tar.gz" \
+            "$DIST_DIR/webrtc-m150-android-arm64-v8a.aar" \
+            "$APK" > "$DIAGNOSTICS_DIR/android-artifact-sha256.txt"
+
+      - name: Upload binary package
+        if: steps.build.outcome == 'success' && steps.consumer.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: webrtc-m150-android-arm64-v8a
-          path: ${{ env.DIST_DIR }}/webrtc-m150-android-arm64-v8a.tar.gz
+          path: |
+            ${{ env.DIST_DIR }}/webrtc-m150-android-arm64-v8a.tar.gz
+            ${{ env.DIST_DIR }}/webrtc-m150-android-arm64-v8a.aar
+            smoke/android-aar/app/build/outputs/apk/debug/app-debug.apk
+            ${{ env.DIAGNOSTICS_DIR }}/android-artifact-sha256.txt
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
@@ -113,6 +150,7 @@ jobs:
             echo "- Target: \`android\`"
             echo "- Builder commit: \`$GITHUB_SHA\`"
             echo "- Build outcome: \`${{ steps.build.outcome }}\`"
+            echo "- AAR consumer outcome: \`${{ steps.consumer.outcome }}\`"
             echo "- Diagnostics artifact: \`webrtc-m150-android-arm64-v8a-diagnostics\`"
             if [ -f "$WORK_DIR/diagnostics/build-events.jsonl" ]; then
               echo
@@ -136,5 +174,10 @@ jobs:
 
       - name: Propagate build failure
         if: steps.build.outcome == 'failure'
+        shell: bash
+        run: exit 1
+
+      - name: Propagate AAR consumer failure
+        if: steps.build.outcome == 'success' && steps.consumer.outcome == 'failure'
         shell: bash
         run: exit 1

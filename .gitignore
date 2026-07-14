@@ -6,3 +6,8 @@ __pycache__/
 .ruff_cache/
 build-workspace*/
 dist/
+smoke/android-aar/.gradle/
+smoke/android-aar/build/
+smoke/android-aar/app/build/
+smoke/android-aar/app/libs/*.aar
+evidence/
