@@ -474,7 +474,7 @@ class ObjCVideoSourceAdapter final
     _backend = std::make_unique<webrtc::cast_tuning::WebRtcCastTuningBackend>(
         configuration.nativeConfig);
     _controller = std::make_unique<webrtc::cast_tuning::CastTuningController>(
-        configuration.nativeConfig, _backend.get(), configuration.telemetryWriter());
+        configuration.nativeConfig, _backend.get(), [configuration telemetryWriter]);
     _encoderEvidence = configuration.encoderEvidence;
     [_encoderEvidence setSessionId:[NSString
         stringWithUTF8String:_controller->snapshot().session_id.c_str()]];
