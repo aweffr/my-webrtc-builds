@@ -32,7 +32,12 @@ Only these upstream behavior patches are vendored: `add_deps.patch`, `windows_ad
 
 - Runner: `ubuntu-24.04`
 - ABI: `arm64-v8a` only
-- Outputs: C++ headers, `lib/arm64-v8a/libwebrtc.a`, and `jar/webrtc.jar`
+- Raw SDK output: C++ headers, `lib/arm64-v8a/libwebrtc.a`,
+  `jar/webrtc.jar`, and the loadable
+  `jni/arm64-v8a/libjingle_peerconnection_so.so`
+- App-consumable output: a standalone arm64-v8a AAR containing
+  `AndroidManifest.xml`, the same Java bytecode as `jar/webrtc.jar`, and the
+  same stripped JNI shared library as the raw SDK package
 - H.264/H.265: Android MediaCodec integration compiled through the WebRTC Java/JNI targets
 
 ### iOS
@@ -80,11 +85,25 @@ The XCFramework workflow accepts explicit x64 and arm64 run IDs. It rejects mism
 
 The release workflow accepts five build run IDs and the XCFramework run ID. It rejects mixed builder commits and existing release tags. The combined-release tag format is `webrtc-m150.7871.3-<builder-short-sha>-YYYYMMDD-all`.
 
+The stable `-all` contract remains unchanged. A scoped GitHub pre-release may
+publish only the platforms changed by an experimental binary revision without
+rebuilding unrelated platforms. Such a pre-release contains only artifacts
+built from its new builder commit, uses an explicit platform-set/preview tag,
+and is marked as a GitHub pre-release; it must not mix unchanged artifacts from
+an older builder commit or present itself as the stable all-platform release.
+The Android AAR and the macOS low-latency change are initially delivered by a
+single macOS/Android-scoped pre-release, while iOS and Windows remain on the
+prior stable release. Its tag follows
+`webrtc-m150.7871.3-<builder-short-sha>-YYYYMMDD-macos-android-preview.N`;
+`N` starts at `1` and increments for another preview from the same revision
+line.
+
 ## Package contract
 
 Binary packages are:
 
 - `webrtc-m150-android-arm64-v8a.tar.gz`
+- `webrtc-m150-android-arm64-v8a.aar`
 - `webrtc-m150-ios.tar.gz`
 - `webrtc-m150-macos-x64.tar.gz`
 - `webrtc-m150-macos-arm64.tar.gz`
@@ -93,6 +112,25 @@ Binary packages are:
 
 Every package includes or is accompanied by machine-readable metadata containing schema version, target, source version, builder commit, configuration fingerprint, GN arguments, patch hashes, runner/toolchain details (including the M150-pinned `depot_tools` commit), and payload checksums. Static packages also contain upstream `LICENSE`, `PATENTS`, `AUTHORS`, generated third-party `NOTICE`, and `SHA256SUMS`.
 
+The Android AAR is a first-class GitHub Release asset rather than an
+application-local repackaging step. Its `classes.jar` and
+`jni/arm64-v8a/libjingle_peerconnection_so.so` are assembled from the same GN
+outputs staged into the raw Android package. Release validation rejects either
+asset when those paired payloads differ, when `JNI_OnLoad` is absent, or when
+the shared library is not AArch64.
+
+Android package acceptance has two layers. GitHub Actions builds and uploads
+the AAR, then compiles a minimal APK that consumes only that AAR and verifies
+that the resulting APK carries the expected arm64-v8a JNI library. Before the
+scoped pre-release is published, the exact workflow artifact is downloaded to
+the local Mac without repackaging and used for an arm64 API 31 emulator E2E
+smoke: the app initializes `PeerConnectionFactory`, creates a factory, and
+queries the available H.264 codec capability. The evidence binds the workflow
+run ID and artifact digest to the AAR SHA-256, ABI, Android API level, and
+relevant logs. The verified AAR bytes are the bytes later uploaded to the
+pre-release. This is an app-consumability gate, not an Android TV UI or
+end-to-end screencast test.
+
 ## Error handling and verification
 
 The builder fails immediately when source identity, patch applicability, expected output, architecture, metadata schema, package safety, or compatibility checks fail. Subprocess failures preserve the command and exit status in Actions logs without printing credentials.
@@ -100,6 +138,27 @@ The builder fails immediately when source identity, patch applicability, expecte
 Unit tests protect target configuration, metadata construction and validation, archive path safety, cross-run compatibility, and release-tag rules. Each actual build additionally verifies archive members, CPU architecture, framework plist/symlinks/headers, Java contents, codec symbols, checksums, and package structure.
 
 The full release delivery is complete only after all five hosted-runner builds succeed, the universal XCFramework is produced, and the corresponding GitHub Release is published and downloaded for checksum verification. The Windows extension itself is accepted on this branch after its hosted build succeeds; combined-release publication remains a later same-commit operation.
+
+A scoped pre-release is complete when every artifact in its declared platform
+set is built from the same builder commit, composed artifacts validate against
+their inputs, the partial release manifest lists exactly that set, GitHub marks
+the release as pre-release, and every uploaded asset is downloaded and its
+checksum reverified. For a scoped release containing Android, the compile and
+arm64 emulator runtime smokes above must pass against the exact AAR SHA being
+published. For this preview, the final arm64 framework/XCFramework slice must
+also pass a 1080p H.264 probe on a real Apple Silicon Mac, covering normal and
+low-latency session creation, encoder ID, negotiated profile, output SPS
+profile, and explicit mismatch logging. The x64 slice receives hosted build,
+link/symbol, and package verification; its lack of real Intel VideoToolbox
+runtime coverage is recorded explicitly and hosted-runner VM results are not
+treated as hardware evidence. It does not satisfy or weaken the full-release
+criterion.
+
+The initial scoped manifest contains exactly the Android raw tar and AAR,
+macOS x64 and arm64 tar packages, universal macOS XCFramework, manifest, and
+release checksums. One joint manifest proves that the sender/receiver platform
+pair belongs to the same preview revision; separate platform release tags are
+not created.
 
 ## Observability
 
