@@ -18,6 +18,7 @@ jobs:
       WORK_DIR: ${{ github.workspace }}/build-workspace
       DIST_DIR: ${{ github.workspace }}/dist
       DIAGNOSTICS_DIR: ${{ github.workspace }}/diagnostics
+      ANDROID_ARTIFACT_DIR: ${{ github.workspace }}/android-artifact
       PYTHONUNBUFFERED: "1"
     steps:
       - name: Check out builder
@@ -104,10 +105,19 @@ jobs:
           APK="smoke/android-aar/app/build/outputs/apk/debug/app-debug.apk"
           unzip -Z1 "$APK" | grep -Fx \
             "lib/arm64-v8a/libjingle_peerconnection_so.so"
+          rm -rf "$ANDROID_ARTIFACT_DIR"
+          mkdir -p "$ANDROID_ARTIFACT_DIR"
+          cp "$DIST_DIR/webrtc-m150-android-arm64-v8a.tar.gz" \
+            "$ANDROID_ARTIFACT_DIR/"
+          cp "$DIST_DIR/webrtc-m150-android-arm64-v8a.aar" \
+            "$ANDROID_ARTIFACT_DIR/"
+          cp "$APK" "$ANDROID_ARTIFACT_DIR/"
           shasum -a 256 \
             "$DIST_DIR/webrtc-m150-android-arm64-v8a.tar.gz" \
             "$DIST_DIR/webrtc-m150-android-arm64-v8a.aar" \
             "$APK" > "$DIAGNOSTICS_DIR/android-artifact-sha256.txt"
+          cp "$DIAGNOSTICS_DIR/android-artifact-sha256.txt" \
+            "$ANDROID_ARTIFACT_DIR/"
 
       - name: Upload binary package
         if: steps.build.outcome == 'success' && steps.consumer.outcome == 'success'
@@ -115,10 +125,7 @@ jobs:
         with:
           name: webrtc-m150-android-arm64-v8a
           path: |
-            ${{ env.DIST_DIR }}/webrtc-m150-android-arm64-v8a.tar.gz
-            ${{ env.DIST_DIR }}/webrtc-m150-android-arm64-v8a.aar
-            smoke/android-aar/app/build/outputs/apk/debug/app-debug.apk
-            ${{ env.DIAGNOSTICS_DIR }}/android-artifact-sha256.txt
+            ${{ env.ANDROID_ARTIFACT_DIR }}/*
           if-no-files-found: error
           retention-days: 30
           compression-level: 0

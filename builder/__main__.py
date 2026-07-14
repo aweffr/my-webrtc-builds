@@ -66,6 +66,8 @@ def _parser() -> argparse.ArgumentParser:
     preview.add_argument("--macos-probe-evidence", required=True, type=Path)
     preview.add_argument("--output-dir", required=True, type=Path)
     preview.add_argument("--builder-commit", required=True)
+    preview.add_argument("--android-workflow-run-id", required=True, type=int)
+    preview.add_argument("--android-artifact-digest", required=True)
     preview.add_argument("--release-date", required=True)
     preview.add_argument("--preview-revision", required=True, type=int)
     return parser
@@ -144,6 +146,8 @@ def main(argv: list[str] | None = None) -> int:
             xcframework_metadata=args.xcframework_metadata.resolve(),
             output_dir=args.output_dir.resolve(),
             builder_commit=args.builder_commit,
+            android_workflow_run_id=args.android_workflow_run_id,
+            android_artifact_digest=args.android_artifact_digest,
             release_date=args.release_date,
             platform=args.platform,
         )

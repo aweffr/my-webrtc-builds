@@ -5,6 +5,9 @@ import android.os.Bundle;
 import android.util.Log;
 import android.widget.TextView;
 import java.util.Arrays;
+import org.webrtc.CastTuningConfig;
+import org.webrtc.CastTuningController;
+import org.webrtc.CastTuningSnapshot;
 import org.webrtc.DefaultVideoDecoderFactory;
 import org.webrtc.PeerConnectionFactory;
 import org.webrtc.VideoCodecInfo;
@@ -33,6 +36,16 @@ public final class MainActivity extends Activity {
               .anyMatch(codec -> "H264".equalsIgnoreCase(codec.name));
       if (!hasH264) {
         throw new IllegalStateException("H264 decoder capability is unavailable");
+      }
+      CastTuningConfig tuningConfig = CastTuningConfig.fromJson(
+          "{\"schema_version\":2,\"profile\":\"DETAIL_IDLE\"}");
+      try (CastTuningController controller = new CastTuningController(tuningConfig)) {
+        CastTuningSnapshot snapshot = controller.snapshot();
+        if (snapshot.sessionId == null || snapshot.sessionId.isEmpty()
+            || snapshot.effectiveConfigHash == null
+            || snapshot.effectiveConfigHash.isEmpty()) {
+          throw new IllegalStateException("CastTuning native snapshot is empty");
+        }
       }
       factory.dispose();
       result.setText("AAR_SMOKE_OK");

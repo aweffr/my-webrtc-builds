@@ -112,6 +112,12 @@ jobs:
           printf '%s\n' "$MACOS_PROBE_EVIDENCE_JSON" > \
             "$DIAGNOSTICS_DIR/evidence/macos-probe.json"
           RELEASE_DATE="$(date -u +%Y%m%d)"
+          ANDROID_ARTIFACT_DIGEST="$(
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/${{ inputs.android_run_id }}/artifacts" |
+              jq -r --arg name "webrtc-m150-android-arm64-v8a" \
+                '[.artifacts[] | select(.name == $name and .expired == false)] |
+                 if length == 1 then .[0].digest else error("Android artifact must be unique") end'
+          )"
           python3 -u -m builder preview-release-manifest \
             --android-package inputs/android/webrtc-m150-android-arm64-v8a.tar.gz \
             --android-aar inputs/android/webrtc-m150-android-arm64-v8a.aar \
@@ -123,6 +129,8 @@ jobs:
             --macos-probe-evidence "$DIAGNOSTICS_DIR/evidence/macos-probe.json" \
             --output-dir "$RELEASE_DIR" \
             --builder-commit "${{ inputs.builder_commit }}" \
+            --android-workflow-run-id "${{ inputs.android_run_id }}" \
+            --android-artifact-digest "$ANDROID_ARTIFACT_DIGEST" \
             --release-date "$RELEASE_DATE" \
             --preview-revision "${{ inputs.preview_revision }}" \
             2>&1 | tee "$DIAGNOSTICS_DIR/preview-validation.log"

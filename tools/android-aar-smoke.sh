@@ -42,6 +42,10 @@ artifact_json="$(
       '[.[].artifacts[] | select(.name == $name)] | if length == 1 then .[0] else error("artifact count must be one") end'
 )"
 artifact_digest="$(jq -r '.digest // "unavailable"' <<<"$artifact_json")"
+if [[ ! "$artifact_digest" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
+  echo "workflow artifact has no usable SHA-256 digest" >&2
+  exit 1
+fi
 
 gh run download "$run_id" \
   --repo "$repository" \

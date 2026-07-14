@@ -272,6 +272,7 @@ class ReleaseManifestTests(unittest.TestCase):
                         "schema_version": 1,
                         "target": "macos-universal",
                         "builder_commit": "a" * 40,
+                        "artifact_digest": "sha256:" + "b" * 64,
                         "source": build_metadata("macos-x64").source,
                         "header_manifest": "same-headers",
                     }
@@ -306,6 +307,7 @@ class PreviewReleaseManifestTests(unittest.TestCase):
                         "schema_version": 1,
                         "workflow_run_id": 123,
                         "builder_commit": "a" * 40,
+                        "artifact_digest": "sha256:" + "b" * 64,
                         "aar_sha256": sha256(android_aar),
                         "android_api_level": 31,
                         "abi": "arm64-v8a",
@@ -353,6 +355,8 @@ class PreviewReleaseManifestTests(unittest.TestCase):
                 macos_probe_evidence=macos_evidence,
                 output_dir=root / "preview",
                 builder_commit="a" * 40,
+                android_workflow_run_id=123,
+                android_artifact_digest="sha256:" + "b" * 64,
                 release_date="20260714",
                 preview_revision=1,
             )
@@ -388,6 +392,7 @@ class PreviewReleaseManifestTests(unittest.TestCase):
                         "schema_version": 1,
                         "workflow_run_id": 123,
                         "builder_commit": "a" * 40,
+                        "artifact_digest": "sha256:" + "b" * 64,
                         "aar_sha256": "0" * 64,
                         "android_api_level": 31,
                         "abi": "arm64-v8a",
@@ -427,6 +432,8 @@ class PreviewReleaseManifestTests(unittest.TestCase):
                     macos_probe_evidence=macos_evidence,
                     output_dir=root / "preview",
                     builder_commit="a" * 40,
+                    android_workflow_run_id=123,
+                    android_artifact_digest="sha256:" + "b" * 64,
                     release_date="20260714",
                     preview_revision=1,
                 )

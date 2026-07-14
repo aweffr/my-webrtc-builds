@@ -226,6 +226,8 @@ def create_preview_release_manifest(
     macos_probe_evidence: Path,
     output_dir: Path,
     builder_commit: str,
+    android_workflow_run_id: int,
+    android_artifact_digest: str,
     release_date: str,
     preview_revision: int,
 ) -> Path:
@@ -286,13 +288,24 @@ def create_preview_release_manifest(
         raise CompositionError("Android smoke evidence schema_version must be 1")
     if android_evidence.get("builder_commit") != builder_commit:
         raise CompositionError("Android smoke evidence uses a different builder commit")
+    if android_evidence.get("workflow_run_id") != android_workflow_run_id:
+        raise CompositionError("Android smoke evidence uses a different workflow run")
+    if android_evidence.get("artifact_digest") != android_artifact_digest:
+        raise CompositionError(
+            "Android smoke evidence uses a different artifact digest"
+        )
+    if (
+        not isinstance(android_artifact_digest, str)
+        or not android_artifact_digest.startswith("sha256:")
+        or len(android_artifact_digest) != len("sha256:") + 64
+    ):
+        raise CompositionError("Android artifact digest must be a SHA-256 digest")
     if android_evidence.get("aar_sha256") != _sha256(android_aar):
         raise CompositionError("Android smoke evidence AAR SHA does not match preview asset")
     if (
         android_evidence.get("marker") != "AAR_SMOKE_OK"
         or android_evidence.get("android_api_level") != 31
         or android_evidence.get("abi") != "arm64-v8a"
-        or not isinstance(android_evidence.get("workflow_run_id"), int)
     ):
         raise CompositionError("Android smoke evidence does not satisfy the runtime gate")
 
@@ -340,6 +353,7 @@ def create_preview_release_manifest(
         ],
         "verification": {
             "android_workflow_run_id": android_evidence["workflow_run_id"],
+            "android_artifact_digest": android_evidence["artifact_digest"],
             "android_api_level": android_evidence["android_api_level"],
             "android_abi": android_evidence["abi"],
             "android_smoke_evidence_sha256": _sha256(android_smoke_evidence),

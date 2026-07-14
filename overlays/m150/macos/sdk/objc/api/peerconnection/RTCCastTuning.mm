@@ -28,6 +28,8 @@ NSError *CastError(NSString *message) {
 }  // namespace
 
 @interface RTCCastTuningEncoderEvidence : NSObject
+- (instancetype)initWithTelemetryPath:(nullable NSString *)telemetryPath;
+- (void)setConfigHash:(NSString *)configHash;
 - (void)recordEvent:(NSDictionary<NSString *, id> *)event;
 - (NSDictionary<NSString *, id> *)snapshot;
 @end
@@ -36,14 +38,26 @@ NSError *CastError(NSString *message) {
   NSLock *_lock;
   NSDictionary<NSString *, id> *_latest;
   BOOL _profileMismatch;
+  NSString *_telemetryPath;
+  NSString *_sessionId;
+  NSString *_configHash;
 }
 
-- (instancetype)init {
+- (instancetype)initWithTelemetryPath:(NSString *)telemetryPath {
   if ((self = [super init])) {
     _lock = [[NSLock alloc] init];
     _latest = @{};
+    _telemetryPath = [telemetryPath copy];
+    _sessionId = [NSUUID UUID].UUIDString;
+    _configHash = @"";
   }
   return self;
+}
+
+- (void)setConfigHash:(NSString *)configHash {
+  [_lock lock];
+  _configHash = [configHash copy];
+  [_lock unlock];
 }
 
 - (void)recordEvent:(NSDictionary<NSString *, id> *)event {
@@ -51,6 +65,28 @@ NSError *CastError(NSString *message) {
   _latest = [event copy];
   _profileMismatch =
       _profileMismatch || [event[@"profile_mismatch"] boolValue];
+  if (_telemetryPath.length > 0) {
+    NSMutableDictionary<NSString *, id> *line = [event mutableCopy];
+    line[@"schema_version"] = @1;
+    line[@"session_id"] = _sessionId;
+    line[@"config_hash"] = _configHash;
+    NSData *json = [NSJSONSerialization dataWithJSONObject:line
+                                                       options:0
+                                                         error:nil];
+    if (json) {
+      NSMutableData *payload = [json mutableCopy];
+      [payload appendData:[@"\n" dataUsingEncoding:NSUTF8StringEncoding]];
+      if (![[NSFileManager defaultManager] fileExistsAtPath:_telemetryPath]) {
+        [[NSFileManager defaultManager] createFileAtPath:_telemetryPath
+                                                contents:nil
+                                              attributes:nil];
+      }
+      NSFileHandle *file = [NSFileHandle fileHandleForWritingAtPath:_telemetryPath];
+      [file seekToEndOfFile];
+      [file writeData:payload];
+      [file closeFile];
+    }
+  }
   [_lock unlock];
 }
 
@@ -181,7 +217,13 @@ class ObjCVideoSourceAdapter final
   }
   RTCCastTuningConfiguration *result = [[self alloc] init];
   result->_nativeConfig = std::move(*config);
-  result->_encoderEvidence = [[RTCCastTuningEncoderEvidence alloc] init];
+  NSString *telemetryPath = result->_nativeConfig->telemetry.jsonl_path
+                                 ? [NSString stringWithUTF8String:
+                                       result->_nativeConfig->telemetry.jsonl_path
+                                           ->c_str()]
+                                 : nil;
+  result->_encoderEvidence =
+      [[RTCCastTuningEncoderEvidence alloc] initWithTelemetryPath:telemetryPath];
   return result;
 }
 
@@ -379,6 +421,7 @@ class ObjCVideoSourceAdapter final
       [EncoderOptions(configuration.nativeConfig) mutableCopy];
   options[@"config_hash"] = configuration.effectiveConfigHash;
   RTCCastTuningEncoderEvidence *evidence = configuration.encoderEvidence;
+  [evidence setConfigHash:configuration.effectiveConfigHash];
   options[@"encoder_evidence_handler"] =
       [^(NSDictionary<NSString *, id> *event) {
         [evidence recordEvent:event];
