@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import zipfile
 from pathlib import Path
 from typing import Protocol
 
@@ -31,6 +32,7 @@ def verify_package_layout(target: str, root: Path) -> None:
             (
                 "lib/arm64-v8a/libwebrtc.a",
                 "jar/webrtc.jar",
+                "jni/arm64-v8a/libjingle_peerconnection_so.so",
                 "include/api/cast_tuning/cast_tuning_config.h",
             )
         )
@@ -149,11 +151,28 @@ def verify_binaries(
     runner: CaptureRunner,
     *,
     android_archiver: Path | str = "llvm-ar",
+    android_readelf: Path | str = "llvm-readelf",
+    android_nm: Path | str = "llvm-nm",
     windows_dumpbin: Path | str | None = None,
 ) -> None:
     if target == "android":
         library = root / "lib" / "arm64-v8a" / "libwebrtc.a"
         _expect_archive_members(runner, str(android_archiver), library)
+        shared_library = (
+            root / "jni" / "arm64-v8a" / "libjingle_peerconnection_so.so"
+        )
+        elf_header = runner.capture([android_readelf, "-h", shared_library])
+        if "ELF64" not in elf_header or "AArch64" not in elf_header:
+            raise VerificationError(
+                f"unexpected Android JNI ELF architecture: {shared_library}"
+            )
+        dynamic_symbols = runner.capture(
+            [android_nm, "-D", "--defined-only", shared_library]
+        )
+        if "JNI_OnLoad" not in dynamic_symbols:
+            raise VerificationError(
+                f"required symbol 'JNI_OnLoad' is missing from {shared_library}"
+            )
         jar_entries = runner.capture(["jar", "tf", root / "jar" / "webrtc.jar"])
         for entry in (
             "org/webrtc/CastTuningAndroidConfig.class",
@@ -214,6 +233,7 @@ def verify_binaries(
                 "RTCVideoEncoderH265",
                 "RTCVideoDecoderH265",
                 "RTCCastTuningController",
+                "kVTVideoEncoderSpecification_EnableLowLatencyRateControl",
             ),
         )
         return
@@ -225,3 +245,24 @@ def verify_binaries(
         )
         return
     raise VerificationError(f"unsupported binary verification target {target!r}")
+
+
+def verify_android_aar(aar: Path, raw_root: Path) -> None:
+    expected = {
+        "AndroidManifest.xml",
+        "classes.jar",
+        "jni/arm64-v8a/libjingle_peerconnection_so.so",
+    }
+    with zipfile.ZipFile(aar) as stream:
+        actual = set(stream.namelist())
+        if actual != expected:
+            raise VerificationError(
+                f"unexpected Android AAR members: {sorted(actual)}; "
+                f"expected {sorted(expected)}"
+            )
+        if stream.read("classes.jar") != (raw_root / "jar" / "webrtc.jar").read_bytes():
+            raise VerificationError("AAR classes.jar differs from raw Android package")
+        if stream.read("jni/arm64-v8a/libjingle_peerconnection_so.so") != (
+            raw_root / "jni" / "arm64-v8a" / "libjingle_peerconnection_so.so"
+        ).read_bytes():
+            raise VerificationError("AAR JNI library differs from raw Android package")

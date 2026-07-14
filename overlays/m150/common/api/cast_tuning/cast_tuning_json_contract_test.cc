@@ -27,6 +27,43 @@ int RunCastTuningJsonContractTests() {
   Expect(config->sender.max_fps == 20, "JSON should override profile fps");
   Expect(config->sender.max_bitrate_bps == 5000000,
          "JSON should override profile bitrate");
+  Expect(config->encoder.h264_profile == "CONSTRAINED_BASELINE",
+         "schema v1 JSON must retain constrained baseline");
+  Expect(!config->encoder.video_toolbox_low_latency_rate_control,
+         "schema v1 JSON must not enable VideoToolbox low latency");
+
+  config = CastTuningConfig::ParseJson(
+      R"({"schema_version":2,"profile":"DETAIL_IDLE","encoder":{"h264_profile":"CONSTRAINED_BASELINE","video_toolbox_low_latency_rate_control":true}})",
+      &error);
+  Expect(config.has_value(), error.c_str());
+  Expect(config->encoder.h264_profile == "CONSTRAINED_BASELINE",
+         "schema v2 must allow an explicit constrained baseline request");
+  Expect(config->encoder.video_toolbox_low_latency_rate_control == true,
+         "schema v2 must parse the VideoToolbox low-latency setting");
+
+  Expect(
+      !CastTuningConfig::ParseJson(
+           R"({"schema_version":1,"profile":"DETAIL_IDLE","encoder":{"video_toolbox_low_latency_rate_control":true}})",
+           &error)
+           .has_value(),
+      "schema v1 must reject the schema v2 VideoToolbox setting");
+  Expect(error.find("requires schema_version 2") != std::string::npos,
+         "schema v1 rejection must identify the required schema");
+
+  Expect(
+      !CastTuningConfig::ParseJson(
+           R"({"schema_version":2,"profile":"DETAIL_IDLE","encoder":{"video_toolbox_low_latency_rate_control":true,"data_rate_limit_factor":1.5}})",
+           &error)
+           .has_value(),
+      "low-latency rate control and DataRateLimits must be mutually exclusive");
+  Expect(error.find("mutually exclusive") != std::string::npos,
+         "DataRateLimits conflict must be explicit");
+
+  Expect(
+      !CastTuningConfig::ParseJson(
+           R"({"schema_version":3,"profile":"DETAIL_IDLE"})", &error)
+           .has_value(),
+      "future schema versions must fail closed");
 
   Expect(
       !CastTuningConfig::ParseJson(
@@ -38,7 +75,7 @@ int RunCastTuningJsonContractTests() {
          "unknown field error must contain its path");
 
   config = CastTuningConfig::ParseJsonWithOverrides(
-      R"({"schema_version":1,"profile":"DETAIL_IDLE","sender":{"max_fps":15}})",
+      R"({"schema_version":2,"profile":"DETAIL_IDLE","sender":{"max_fps":15}})",
       "MOTION", R"({"sender":{"max_fps":20}})", &error);
   Expect(config.has_value(), error.c_str());
   Expect(config->profile == webrtc::cast_tuning::Profile::kMotion,

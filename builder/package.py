@@ -55,6 +55,10 @@ def package_filename(target: str) -> str:
         raise PackageError(f"unsupported package target {target!r}") from exc
 
 
+def android_aar_filename() -> str:
+    return "webrtc-m150-android-arm64-v8a.aar"
+
+
 def _find_windows_dumpbin(runner: Runner) -> Path:
     output = runner.capture(
         [
@@ -97,6 +101,17 @@ def create_zip(source: Path, archive: Path, *, arcname: str) -> None:
                 continue
             relative = path.relative_to(source).as_posix()
             stream.write(path, f"{prefix}/{relative}")
+
+
+def create_android_aar(stage: Path, manifest: Path, archive: Path) -> None:
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as stream:
+        stream.write(manifest, "AndroidManifest.xml")
+        stream.write(stage / "jar" / "webrtc.jar", "classes.jar")
+        stream.write(
+            stage / "jni" / "arm64-v8a" / "libjingle_peerconnection_so.so",
+            "jni/arm64-v8a/libjingle_peerconnection_so.so",
+        )
 
 
 def _validate_member(member: tarfile.TarInfo) -> None:
@@ -198,6 +213,17 @@ def _copy_payload(target: TargetConfig, units: tuple[BuildUnit, ...], stage: Pat
         jar = stage / "jar" / "webrtc.jar"
         jar.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(unit.output_dir / "lib.java/sdk/android/libwebrtc.jar", jar)
+        shared_library = (
+            stage
+            / "jni"
+            / "arm64-v8a"
+            / "libjingle_peerconnection_so.so"
+        )
+        shared_library.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(
+            unit.output_dir / "libjingle_peerconnection_so.so",
+            shared_library,
+        )
     elif target.name == "ios":
         for architecture, unit in unit_by_arch.items():
             destination = stage / "lib" / architecture.replace(":", "-") / "libwebrtc.a"
@@ -280,12 +306,12 @@ def stage_and_package(
             if target.overlays and overlay_dir is not None
             else {}
         ),
-        tuning_schema_version=1,
+        tuning_schema_version=2,
     )
     save_metadata(stage / "metadata.json", metadata)
     write_checksums(stage)
 
-    from .verify import verify_binaries, verify_package_layout
+    from .verify import verify_android_aar, verify_binaries, verify_package_layout
 
     verify_package_layout(target.name, stage)
     verify_binaries(
@@ -297,6 +323,16 @@ def stage_and_package(
             if target.name == "android"
             else "llvm-ar"
         ),
+        android_readelf=(
+            workspace.src / "third_party/llvm-build/Release+Asserts/bin/llvm-readelf"
+            if target.name == "android"
+            else "llvm-readelf"
+        ),
+        android_nm=(
+            workspace.src / "third_party/llvm-build/Release+Asserts/bin/llvm-nm"
+            if target.name == "android"
+            else "llvm-nm"
+        ),
         windows_dumpbin=(
             _find_windows_dumpbin(runner)
             if target.name == "windows-x64"
@@ -304,6 +340,14 @@ def stage_and_package(
         ),
     )
     archive = dist_dir / package_filename(target.name)
+    if target.name == "android":
+        aar = dist_dir / android_aar_filename()
+        create_android_aar(
+            stage,
+            workspace.src / "sdk" / "android" / "AndroidManifest.xml",
+            aar,
+        )
+        verify_android_aar(aar, stage)
     if target.name == "windows-x64":
         create_zip(stage, archive, arcname="webrtc")
     else:

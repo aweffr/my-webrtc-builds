@@ -25,7 +25,7 @@ def metadata_for(target: str = "macos-x64") -> BuildMetadata:
         gn_args={"x64": get_target("macos-x64").gn_args_for("x64")},
         toolchain={"xcode": "26.0.1"},
         overlay_hashes={"api/cast_tuning/config.h": "overlay-sha256"},
-        tuning_schema_version=1,
+        tuning_schema_version=2,
     )
 
 
@@ -56,7 +56,7 @@ class MetadataTests(unittest.TestCase):
             self.assertTrue(path.read_text().endswith("\n"))
             payload = json.loads(path.read_text())
             self.assertEqual(payload["schema_version"], 2)
-            self.assertEqual(payload["tuning_schema_version"], 1)
+            self.assertEqual(payload["tuning_schema_version"], 2)
             self.assertEqual(
                 payload["overlay_hashes"],
                 {"api/cast_tuning/config.h": "overlay-sha256"},
@@ -66,6 +66,12 @@ class MetadataTests(unittest.TestCase):
         payload = metadata_for().to_dict()
         payload["schema_version"] = 3
         with self.assertRaisesRegex(MetadataError, "schema version"):
+            BuildMetadata.from_dict(payload)
+
+    def test_legacy_tuning_schema_is_rejected_for_new_artifacts(self) -> None:
+        payload = metadata_for().to_dict()
+        payload["tuning_schema_version"] = 1
+        with self.assertRaisesRegex(MetadataError, "tuning_schema_version"):
             BuildMetadata.from_dict(payload)
 
     def test_mixed_source_or_builder_commit_is_rejected(self) -> None:

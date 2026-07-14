@@ -34,8 +34,10 @@ const char* FecModeName(FecMode mode) {
 
 }  // namespace
 
-CastTuningConfig CastTuningConfig::ForProfile(Profile selected_profile) {
+CastTuningConfig CastTuningConfig::ForProfile(Profile selected_profile,
+                                              int schema_version) {
   CastTuningConfig config;
+  config.schema_version = schema_version;
   config.profile = selected_profile;
   if (selected_profile == Profile::kUpstream) {
     return config;
@@ -57,10 +59,15 @@ CastTuningConfig CastTuningConfig::ForProfile(Profile selected_profile) {
   config.pacing.max_queue_ms = 100;
   config.encoder.realtime = true;
   config.encoder.allow_frame_reordering = false;
-  config.encoder.h264_profile = "CONSTRAINED_BASELINE";
+  config.encoder.h264_profile = schema_version >= 2 ? "CONSTRAINED_HIGH"
+                                                    : "CONSTRAINED_BASELINE";
   config.encoder.h264_level = "4.1";
-  config.encoder.data_rate_limit_factor = 1.5;
-  config.encoder.data_rate_window_ms = 1000;
+  if (schema_version >= 2) {
+    config.encoder.video_toolbox_low_latency_rate_control = true;
+  } else {
+    config.encoder.data_rate_limit_factor = 1.5;
+    config.encoder.data_rate_window_ms = 1000;
+  }
   config.receiver.jitter_minimum_ms = 0;
   config.receiver.prerender_smoothing = false;
   config.receiver.render_lead_ms = 10;
@@ -116,8 +123,9 @@ bool CastTuningConfig::IsUpstream() const {
 }
 
 ValidationResult CastTuningConfig::Validate() const {
-  if (schema_version != kTuningSchemaVersion) {
-    return ValidationResult::Error("schema_version must be 1");
+  if (schema_version < kMinimumTuningSchemaVersion ||
+      schema_version > kTuningSchemaVersion) {
+    return ValidationResult::Error("schema_version must be 1 or 2");
   }
   if (IsUpstream()) {
     return ValidationResult::Ok();
@@ -163,6 +171,17 @@ ValidationResult CastTuningConfig::Validate() const {
       !InRange(encoder.max_frame_delay_count, 0, 8) ||
       !InRange(encoder.max_qp, 0, 51)) {
     return ValidationResult::Error("encoder values are out of range");
+  }
+  if (schema_version == 1 &&
+      encoder.video_toolbox_low_latency_rate_control.has_value()) {
+    return ValidationResult::Error(
+        "encoder.video_toolbox_low_latency_rate_control requires schema_version 2");
+  }
+  if (encoder.video_toolbox_low_latency_rate_control.value_or(false) &&
+      (encoder.data_rate_limit_factor || encoder.data_rate_window_ms)) {
+    return ValidationResult::Error(
+        "encoder VideoToolbox low-latency rate control is mutually exclusive "
+        "with DataRateLimits");
   }
   if (!InRange(receiver.jitter_minimum_ms, 0, 500) ||
       !InRange(receiver.render_lead_ms, 0, 100) ||
@@ -239,7 +258,8 @@ std::string CastTuningConfig::FieldTrialString() const {
   if (encoder.realtime || encoder.allow_frame_reordering ||
       encoder.periodic_idr_seconds || encoder.max_h264_slice_bytes ||
       encoder.data_rate_limit_factor || encoder.data_rate_window_ms ||
-      encoder.max_frame_delay_count || encoder.max_qp) {
+      encoder.max_frame_delay_count || encoder.max_qp ||
+      encoder.video_toolbox_low_latency_rate_control) {
     trials << "WebRTC-CastTuning-VideoToolbox/realtime:"
            << (encoder.realtime.value_or(true) ? 1 : 0) << ",reorder:"
            << (encoder.allow_frame_reordering.value_or(false) ? 1 : 0)
@@ -249,7 +269,12 @@ std::string CastTuningConfig::FieldTrialString() const {
            << CompactDouble(encoder.data_rate_limit_factor.value_or(1.5))
            << ",rate_window_ms:" << encoder.data_rate_window_ms.value_or(1000)
            << ",frame_delay:" << encoder.max_frame_delay_count.value_or(-1)
-           << ",max_qp:" << encoder.max_qp.value_or(-1) << '/';
+           << ",max_qp:" << encoder.max_qp.value_or(-1)
+           << ",low_latency_rate_control:"
+           << (encoder.video_toolbox_low_latency_rate_control.value_or(false)
+                   ? 1
+                   : 0)
+           << '/';
   }
   for (const auto& [key, value] : experimental.raw_field_trials) {
     trials << key << '/' << value << '/';

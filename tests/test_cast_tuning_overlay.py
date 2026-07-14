@@ -13,6 +13,29 @@ CORE = ROOT / "overlays" / "m150" / "common" / "api" / "cast_tuning"
 
 
 class CastTuningNativeContractTests(unittest.TestCase):
+    def test_h264_hook_patch_applies_to_exact_m150_source(self) -> None:
+        relative = Path("sdk/objc/components/video_codec/RTCVideoEncoderH264.mm")
+        cached_source = ROOT / "references" / "M150" / "upstream" / relative
+        self.assertTrue(cached_source.is_file())
+        with tempfile.TemporaryDirectory() as directory:
+            checkout = Path(directory)
+            destination = checkout / relative
+            destination.parent.mkdir(parents=True)
+            shutil.copy2(cached_source, destination)
+            subprocess.run(
+                [
+                    "git",
+                    "apply",
+                    "--check",
+                    f"--include={relative.as_posix()}",
+                    str(ROOT / "patches" / "m150" / "cast_tuning_hooks.patch"),
+                ],
+                cwd=checkout,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+
     def test_native_contract_tests_use_platform_neutral_paths(self) -> None:
         platform_absolute_path = re.compile(r'"(?:/|[A-Za-z]:[\\/]|\\\\)')
         violations: list[str] = []

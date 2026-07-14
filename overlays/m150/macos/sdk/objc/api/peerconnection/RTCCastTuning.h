@@ -81,6 +81,11 @@ RTC_OBJC_EXPORT
 @property(nonatomic, readonly) NSString *effectiveConfigHash;
 @property(nonatomic, readonly) uint64_t revision;
 @property(nonatomic, readonly) BOOL recreateRequired;
+@property(nonatomic, readonly) BOOL profileMismatch;
+@property(nonatomic, readonly, nullable) NSString *expectedH264Profile;
+@property(nonatomic, readonly, nullable) NSString *actualH264Profile;
+@property(nonatomic, readonly, nullable) NSString *videoToolboxEncoderId;
+@property(nonatomic, readonly, nullable) NSString *encoderSessionId;
 
 @end
 

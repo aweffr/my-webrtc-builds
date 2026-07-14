@@ -529,15 +529,70 @@ diff --git a/sdk/objc/components/video_codec/RTCVideoEncoderH264.mm b/sdk/objc/c
 index 0fe7f05762..7efc78cb21 100644
 --- a/sdk/objc/components/video_codec/RTCVideoEncoderH264.mm
 +++ b/sdk/objc/components/video_codec/RTCVideoEncoderH264.mm
-@@ -354,6 +354,7 @@ NSUInteger GetMaxSampleRate(
+@@ -335,6 +335,49 @@ NSUInteger GetMaxSampleRate(
+       return 0;
+   }
+ }
++
++NSString *H264ProfileFamily(webrtc::H264Profile profile) {
++  switch (profile) {
++    case webrtc::H264Profile::kProfileConstrainedBaseline:
++    case webrtc::H264Profile::kProfileBaseline:
++      return @"BASELINE";
++    case webrtc::H264Profile::kProfileMain:
++      return @"MAIN";
++    case webrtc::H264Profile::kProfileConstrainedHigh:
++    case webrtc::H264Profile::kProfileHigh:
++    case webrtc::H264Profile::kProfilePredictiveHigh444:
++      return @"HIGH";
++  }
++}
++
++NSString *H264SpsProfileFamily(CMSampleBufferRef sampleBuffer) {
++  CMFormatDescriptionRef format =
++      CMSampleBufferGetFormatDescription(sampleBuffer);
++  const uint8_t *sps = nullptr;
++  size_t spsSize = 0;
++  size_t parameterSetCount = 0;
++  int nalHeaderLength = 0;
++  const OSStatus status =
++      CMVideoFormatDescriptionGetH264ParameterSetAtIndex(
++          format,
++          0,
++          &sps,
++          &spsSize,
++          &parameterSetCount,
++          &nalHeaderLength);
++  if (status != noErr || !sps || spsSize < 3)
++    return @"UNKNOWN";
++  switch (sps[1]) {
++    case 66:
++      return @"BASELINE";
++    case 77:
++      return @"MAIN";
++    case 100:
++      return @"HIGH";
++    default:
++      return [NSString stringWithFormat:@"PROFILE_IDC_%u", sps[1]];
++  }
++}
+ }  // namespace
+-
++
+ @implementation RTC_OBJC_TYPE (RTCVideoEncoderH264) {
+@@ -354,6 +397,11 @@ NSUInteger GetMaxSampleRate(
  
    webrtc::H264BitstreamParser _h264BitstreamParser;
    std::vector<uint8_t> _frameScaleBuffer;
 +  NSDictionary<NSString *, id> *_castTuningOptions;
++  NSString *_encoderId;
++  NSString *_encoderSessionId;
++  uint64_t _compressionSessionSequence;
++  BOOL _profileEvidenceReported;
  }
  
  + (NSArray<RTC_OBJC_TYPE(RTCVideoCodecInfo) *> *)supportedCodecs {
-@@ -389,6 +390,13 @@ NSUInteger GetMaxSampleRate(
+@@ -389,6 +437,13 @@ NSUInteger GetMaxSampleRate(
  // of time.
  - (instancetype)initWithCodecInfo:
      (RTC_OBJC_TYPE(RTCVideoCodecInfo) *)codecInfo {
@@ -551,7 +606,7 @@ index 0fe7f05762..7efc78cb21 100644
    self = [super init];
    if (self) {
      _codecInfo = codecInfo;
-@@ -401,6 +409,7 @@ NSUInteger GetMaxSampleRate(
+@@ -401,6 +456,7 @@ NSUInteger GetMaxSampleRate(
      RTC_LOG(LS_INFO) << "Using profile "
                       << CFStringToString(ExtractProfile(*_profile_level_id));
      RTC_CHECK([codecInfo.name isEqualToString:kRTCVideoCodecH264Name]);
@@ -559,13 +614,30 @@ index 0fe7f05762..7efc78cb21 100644
    }
    return self;
  }
-@@ -699,14 +708,22 @@ NSUInteger GetMaxSampleRate(
+@@ -684,6 +740,13 @@ NSUInteger GetMaxSampleRate(
+-
++
+ - (int)resetCompressionSessionWithPixelFormat:(OSType)framePixelFormat {
+   [self destroyCompressionSession];
++  _profileEvidenceReported = NO;
++  _encoderId = nil;
++  _encoderSessionId = [NSString
++      stringWithFormat:@"vt-%p-%llu",
++                       self,
++                       static_cast<unsigned long long>(
++                           ++_compressionSessionSequence)];
+-
++
+   // Set source image buffer attributes. These attributes will be present on
+   // buffers retrieved from the encoder's pixel buffer pool.
+@@ -699,14 +762,26 @@ NSUInteger GetMaxSampleRate(
      (NSString *)kCVPixelBufferPixelFormatTypeKey : @(framePixelFormat),
    };
  
 -  NSDictionary *encoder_specs;
-+  NSDictionary *encoder_specs = nil;
++  NSMutableDictionary *encoder_specs = nil;
  #if defined(WEBRTC_MAC) && !defined(WEBRTC_IOS)
++  encoder_specs = [NSMutableDictionary dictionary];
    // Currently hw accl is supported above 360p on mac, below 360p
    // the compression session will be created with hw accl disabled.
 -  encoder_specs = @{
@@ -574,20 +646,72 @@ index 0fe7f05762..7efc78cb21 100644
 -  };
 +  NSString *hardwarePolicy = _castTuningOptions[@"hardware_policy"];
 +  if ([hardwarePolicy isEqualToString:@"REQUIRE_HARDWARE"]) {
-+    encoder_specs = @{
-+      (NSString *)
-+      kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder : @(YES),
-+    };
++    encoder_specs[(NSString *)
++        kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder] =
++        @(YES);
 +  } else if (![hardwarePolicy isEqualToString:@"ALLOW_SOFTWARE"]) {
-+    encoder_specs = @{
-+      (NSString *)
-+      kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder : @(YES),
-+    };
++    encoder_specs[(NSString *)
++        kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder] =
++        @(YES);
++  }
++  if ([_castTuningOptions[@"video_toolbox_low_latency_rate_control"]
++          boolValue]) {
++    encoder_specs[(NSString *)
++        kVTVideoEncoderSpecification_EnableLowLatencyRateControl] = @(YES);
 +  }
  
  #endif
    OSStatus status = VTCompressionSessionCreate(
-@@ -745,14 +762,16 @@ NSUInteger GetMaxSampleRate(
+@@ -726,6 +801,21 @@ NSUInteger GetMaxSampleRate(
+     return WEBRTC_VIDEO_CODEC_ERROR;
+   }
+ #if defined(WEBRTC_MAC) && !defined(WEBRTC_IOS)
++  CFStringRef encoder_id = nullptr;
++  OSStatus encoder_id_status = VTSessionCopyProperty(
++      _compressionSession,
++      kVTCompressionPropertyKey_EncoderID,
++      nullptr,
++      &encoder_id);
++  if (encoder_id_status == noErr && encoder_id) {
++    _encoderId = [(__bridge NSString *)encoder_id copy];
++    RTC_LOG(LS_INFO) << "Compression session encoder ID: "
++                     << CFStringToString(encoder_id);
++    CFRelease(encoder_id);
++  } else {
++    RTC_LOG(LS_WARNING) << "Compression session encoder ID unavailable: "
++                        << encoder_id_status;
++  }
+   CFBooleanRef hwaccl_enabled = nullptr;
+   status = VTSessionCopyProperty(
+       _compressionSession,
+@@ -734,8 +824,25 @@ NSUInteger GetMaxSampleRate(
+       &hwaccl_enabled);
+   if (status == noErr && (CFBooleanGetValue(hwaccl_enabled))) {
+     RTC_LOG(LS_INFO) << "Compression session created with hw accl enabled";
+-  } else {
++  } else if (status == noErr) {
+     RTC_LOG(LS_INFO) << "Compression session created with hw accl disabled";
++  } else {
++    RTC_LOG(LS_INFO) << "Compression session hardware acceleration property "
++                        "unavailable: "
++                     << status;
+   }
++  if (hwaccl_enabled)
++    CFRelease(hwaccl_enabled);
++  void (^evidenceHandler)(NSDictionary<NSString *, id> *) =
++      _castTuningOptions[@"encoder_evidence_handler"];
++  if (evidenceHandler) {
++    evidenceHandler(@{
++      @"event_type" : @"encoder_session_created",
++      @"encoder_id" : _encoderId ?: @"UNKNOWN",
++      @"encoder_session_id" : _encoderSessionId,
++      @"config_hash" : _castTuningOptions[@"config_hash"] ?: @"",
++      @"profile_mismatch" : @(NO),
++    });
++  }
+ #endif
+   [self configureCompressionSession];
+@@ -745,14 +852,16 @@ NSUInteger GetMaxSampleRate(
  
  - (void)configureCompressionSession {
    RTC_DCHECK(_compressionSession);
@@ -607,7 +731,7 @@ index 0fe7f05762..7efc78cb21 100644
    [self setEncoderBitrateBps:_targetBitrateBps frameRate:_encoderFrameRate];
    // TODO(tkchin): Look at entropy mode and colorspace matrices.
    // TODO(tkchin): Investigate to see if there's any way to make this work.
-@@ -762,13 +781,33 @@ NSUInteger GetMaxSampleRate(
+@@ -762,13 +871,33 @@ NSUInteger GetMaxSampleRate(
    //     kVTCompressionPropertyKey_MaxFrameDelayCount,
    //     1);
  
@@ -644,27 +768,119 @@ index 0fe7f05762..7efc78cb21 100644
  }
  
  - (void)destroyCompressionSession {
-@@ -805,14 +844,20 @@ NSUInteger GetMaxSampleRate(
+@@ -804,34 +933,42 @@ NSUInteger GetMaxSampleRate(
+                            frameRate);
      }
  
-     // TODO(tkchin): Add a helper method to set array value.
-+    NSNumber *configuredFactor = _castTuningOptions[@"data_rate_limit_factor"];
-+    const double dataRateFactor =
-+        configuredFactor ? configuredFactor.doubleValue
-+                         : kLimitToAverageBitRateFactor;
-     int64_t dataLimitBytesPerSecondValue =
+-    // TODO(tkchin): Add a helper method to set array value.
+-    int64_t dataLimitBytesPerSecondValue =
 -        static_cast<int64_t>(bitrateBps * kLimitToAverageBitRateFactor / 8);
-+        static_cast<int64_t>(bitrateBps * dataRateFactor / 8);
-     CFNumberRef bytesPerSecond = CFNumberCreate(kCFAllocatorDefault,
-                                                 kCFNumberSInt64Type,
-                                                 &dataLimitBytesPerSecondValue);
+-    CFNumberRef bytesPerSecond = CFNumberCreate(kCFAllocatorDefault,
+-                                                kCFNumberSInt64Type,
+-                                                &dataLimitBytesPerSecondValue);
 -    int64_t oneSecondValue = 1;
-+    NSNumber *configuredWindow = _castTuningOptions[@"data_rate_window_ms"];
-+    double windowSeconds =
-+        configuredWindow ? configuredWindow.doubleValue / 1000.0 : 1.0;
-     CFNumberRef oneSecond = CFNumberCreate(
+-    CFNumberRef oneSecond = CFNumberCreate(
 -        kCFAllocatorDefault, kCFNumberSInt64Type, &oneSecondValue);
-+        kCFAllocatorDefault, kCFNumberDoubleType, &windowSeconds);
-     const void *nums[2] = {bytesPerSecond, oneSecond};
-     CFArrayRef dataRateLimits =
-         CFArrayCreate(nullptr, nums, 2, &kCFTypeArrayCallBacks);
+-    const void *nums[2] = {bytesPerSecond, oneSecond};
+-    CFArrayRef dataRateLimits =
+-        CFArrayCreate(nullptr, nums, 2, &kCFTypeArrayCallBacks);
+-    OSStatus status =
+-        VTSessionSetProperty(_compressionSession,
+-                             kVTCompressionPropertyKey_DataRateLimits,
+-                             dataRateLimits);
+-    if (bytesPerSecond) {
+-      CFRelease(bytesPerSecond);
+-    }
+-    if (oneSecond) {
+-      CFRelease(oneSecond);
+-    }
+-    if (dataRateLimits) {
+-      CFRelease(dataRateLimits);
+-    }
+-    if (status != noErr) {
+-      RTC_LOG(LS_ERROR) << "Failed to set data rate limit with code: "
+-                        << status;
++    if (![_castTuningOptions[@"video_toolbox_low_latency_rate_control"]
++            boolValue]) {
++      // Apple's low-latency rate-control path uses AverageBitRate directly;
++      // DataRateLimits causes bitrate undershoot on RTVC encoders.
++      NSNumber *configuredFactor = _castTuningOptions[@"data_rate_limit_factor"];
++      const double dataRateFactor =
++          configuredFactor ? configuredFactor.doubleValue
++                           : kLimitToAverageBitRateFactor;
++      int64_t dataLimitBytesPerSecondValue =
++          static_cast<int64_t>(bitrateBps * dataRateFactor / 8);
++      CFNumberRef bytesPerSecond = CFNumberCreate(
++          kCFAllocatorDefault,
++          kCFNumberSInt64Type,
++          &dataLimitBytesPerSecondValue);
++      NSNumber *configuredWindow = _castTuningOptions[@"data_rate_window_ms"];
++      double windowSeconds =
++          configuredWindow ? configuredWindow.doubleValue / 1000.0 : 1.0;
++      CFNumberRef oneSecond = CFNumberCreate(
++          kCFAllocatorDefault, kCFNumberDoubleType, &windowSeconds);
++      const void *nums[2] = {bytesPerSecond, oneSecond};
++      CFArrayRef dataRateLimits =
++          CFArrayCreate(nullptr, nums, 2, &kCFTypeArrayCallBacks);
++      OSStatus status =
++          VTSessionSetProperty(_compressionSession,
++                               kVTCompressionPropertyKey_DataRateLimits,
++                               dataRateLimits);
++      if (bytesPerSecond)
++        CFRelease(bytesPerSecond);
++      if (oneSecond)
++        CFRelease(oneSecond);
++      if (dataRateLimits)
++        CFRelease(dataRateLimits);
++      if (status != noErr) {
++        RTC_LOG(LS_ERROR) << "Failed to set data rate limit with code: "
++                          << status;
++      }
+     }
+-
++
+     _encoderBitrateBps = bitrateBps;
+@@ -874,6 +1011,41 @@ NSUInteger GetMaxSampleRate(
+-
++
+   if (isKeyframe) {
+     RTC_LOG(LS_INFO) << "Generated keyframe";
++    if (!_profileEvidenceReported) {
++      _profileEvidenceReported = YES;
++      NSString *expected = H264ProfileFamily(_profile_level_id->profile);
++      NSString *actual = H264SpsProfileFamily(sampleBuffer);
++      const BOOL mismatch = ![expected isEqualToString:actual];
++      NSString *evidenceLog = [NSString
++          stringWithFormat:
++              @"CastTuning H264 profile evidence {\"expected_profile\":\"%@\","
++               @"\"actual_profile\":\"%@\",\"encoder_id\":\"%@\","
++               @"\"encoder_session_id\":\"%@\",\"config_hash\":\"%@\","
++               @"\"profile_mismatch\":%@}",
++              expected,
++              actual,
++              _encoderId ?: @"UNKNOWN",
++              _encoderSessionId,
++              _castTuningOptions[@"config_hash"] ?: @"",
++              mismatch ? @"true" : @"false"];
++      if (mismatch)
++        RTC_LOG(LS_WARNING) << evidenceLog.UTF8String;
++      else
++        RTC_LOG(LS_INFO) << evidenceLog.UTF8String;
++      void (^evidenceHandler)(NSDictionary<NSString *, id> *) =
++          _castTuningOptions[@"encoder_evidence_handler"];
++      if (evidenceHandler) {
++        evidenceHandler(@{
++          @"event_type" : @"h264_profile_evidence",
++          @"expected_profile" : expected,
++          @"actual_profile" : actual,
++          @"encoder_id" : _encoderId ?: @"UNKNOWN",
++          @"encoder_session_id" : _encoderSessionId,
++          @"config_hash" : _castTuningOptions[@"config_hash"] ?: @"",
++          @"profile_mismatch" : @(mismatch),
++        });
++      }
++    }
+   }
+-
++
+   __block std::unique_ptr<webrtc::Buffer> buffer =

@@ -233,7 +233,8 @@ bool ParseEncoder(const Json::Value& value,
                    {"hardware_policy", "realtime", "allow_frame_reordering",
                     "h264_profile", "h264_level", "periodic_idr_seconds",
                     "max_h264_slice_bytes", "data_rate_limit_factor",
-                    "data_rate_window_ms", "max_frame_delay_count", "max_qp"},
+                    "data_rate_window_ms", "max_frame_delay_count", "max_qp",
+                    "video_toolbox_low_latency_rate_control"},
                    error)) {
     return false;
   }
@@ -271,7 +272,9 @@ bool ParseEncoder(const Json::Value& value,
                  &encoder->data_rate_window_ms, error) &&
          ReadInt(value, "max_frame_delay_count", "encoder",
                  &encoder->max_frame_delay_count, error) &&
-         ReadInt(value, "max_qp", "encoder", &encoder->max_qp, error);
+         ReadInt(value, "max_qp", "encoder", &encoder->max_qp, error) &&
+         ReadBool(value, "video_toolbox_low_latency_rate_control", "encoder",
+                  &encoder->video_toolbox_low_latency_rate_control, error);
 }
 
 bool ParseReceiver(const Json::Value& value,
@@ -400,11 +403,16 @@ std::optional<CastTuningConfig> CastTuningConfig::ParseJson(
     *error = "schema_version must be an integer";
     return std::nullopt;
   }
+  const int schema_version = root["schema_version"].asInt();
+  if (schema_version < kMinimumTuningSchemaVersion ||
+      schema_version > kTuningSchemaVersion) {
+    *error = "schema_version must be 1 or 2";
+    return std::nullopt;
+  }
   std::optional<Profile> profile = ParseProfile(root, error);
   if (!profile)
     return std::nullopt;
-  CastTuningConfig config = ForProfile(*profile);
-  config.schema_version = root["schema_version"].asInt();
+  CastTuningConfig config = ForProfile(*profile, schema_version);
   config.enabled = *profile != Profile::kUpstream || root.size() > 2;
   if ((root.isMember("sender") &&
        !ParseSender(root["sender"], &config.sender, error)) ||

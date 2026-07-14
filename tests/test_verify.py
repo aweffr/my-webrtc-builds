@@ -16,7 +16,7 @@ def create_common_tree(root: Path) -> None:
 
 
 class PackageLayoutVerificationTests(unittest.TestCase):
-    def test_android_requires_static_library_and_jar(self) -> None:
+    def test_android_requires_static_library_jar_and_jni_shared_object(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             create_common_tree(root)
@@ -26,6 +26,12 @@ class PackageLayoutVerificationTests(unittest.TestCase):
                 verify_package_layout("android", root)
             (root / "jar").mkdir()
             (root / "jar" / "webrtc.jar").write_bytes(b"jar")
+            with self.assertRaisesRegex(VerificationError, "libjingle_peerconnection_so.so"):
+                verify_package_layout("android", root)
+            (root / "jni" / "arm64-v8a").mkdir(parents=True)
+            (root / "jni" / "arm64-v8a" / "libjingle_peerconnection_so.so").write_bytes(
+                b"shared"
+            )
             verify_package_layout("android", root)
 
     def test_ios_requires_separate_device_and_simulator_libraries(self) -> None:
@@ -114,9 +120,15 @@ class BinaryVerificationTests(unittest.TestCase):
             (root / "lib" / "arm64-v8a" / "libwebrtc.a").write_bytes(b"archive")
             (root / "jar").mkdir()
             (root / "jar" / "webrtc.jar").write_bytes(b"jar")
+            (root / "jni" / "arm64-v8a").mkdir(parents=True)
+            (root / "jni" / "arm64-v8a" / "libjingle_peerconnection_so.so").write_bytes(
+                b"shared"
+            )
             runner = FakeRunner(
                 {
                     "/checkout/llvm-ar": "peer_connection.o",
+                    "llvm-readelf": "Class: ELF64\nMachine: AArch64",
+                    "llvm-nm": "0000000000000000 T JNI_OnLoad",
                     "jar": (
                         "org/webrtc/CastTuningAndroidConfig.class\n"
                         "org/webrtc/CastTuningConfig.class\n"
@@ -141,6 +153,12 @@ class BinaryVerificationTests(unittest.TestCase):
         self.assertEqual(
             runner.commands[0][0].replace("\\", "/"), "/checkout/llvm-ar"
         )
+        self.assertTrue(
+            any(command[0] == "llvm-readelf" for command in runner.commands)
+        )
+        self.assertTrue(
+            any(command[0] == "llvm-nm" for command in runner.commands)
+        )
 
     def test_android_missing_cast_tuning_class_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -152,6 +170,8 @@ class BinaryVerificationTests(unittest.TestCase):
             runner = FakeRunner(
                 {
                     "llvm-ar": "peer_connection.o",
+                    "llvm-readelf": "Class: ELF64\nMachine: AArch64",
+                    "llvm-nm": "0000000000000000 T JNI_OnLoad",
                     "jar": (
                         "org/webrtc/HardwareVideoEncoderFactory.class\n"
                         "org/webrtc/VideoEncoder$CodecSpecificInfoH265.class\n"
@@ -172,6 +192,8 @@ class BinaryVerificationTests(unittest.TestCase):
             runner = FakeRunner(
                 {
                     "llvm-ar": "peer_connection.o",
+                    "llvm-readelf": "Class: ELF64\nMachine: AArch64",
+                    "llvm-nm": "0000000000000000 T JNI_OnLoad",
                     "jar": (
                         "org/webrtc/CastTuningAndroidConfig.class\n"
                         "org/webrtc/CastTuningConfig.class\n"
@@ -201,7 +223,8 @@ class BinaryVerificationTests(unittest.TestCase):
                     "lipo": "arm64",
                     "nm": (
                         "H264EncoderImpl H264DecoderImpl RTCVideoEncoderH265 "
-                        "RTCVideoDecoderH265 RTCCastTuningController"
+                        "RTCVideoDecoderH265 RTCCastTuningController "
+                        "kVTVideoEncoderSpecification_EnableLowLatencyRateControl"
                     ),
                 }
             )
@@ -246,6 +269,29 @@ class BinaryVerificationTests(unittest.TestCase):
                 }
             )
             with self.assertRaisesRegex(VerificationError, "RTCCastTuningController"):
+                verify_binaries("macos-arm64", root, runner)
+
+    def test_macos_missing_low_latency_rate_control_symbol_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "lib").mkdir()
+            (root / "lib" / "libwebrtc.a").write_bytes(b"archive")
+            framework = root / "Frameworks" / "WebRTC.framework"
+            framework.mkdir(parents=True)
+            (framework / "WebRTC").write_bytes(b"framework")
+            runner = FakeRunner(
+                {
+                    "/usr/bin/ar": "peer_connection.o",
+                    "lipo": "arm64",
+                    "nm": (
+                        "H264EncoderImpl H264DecoderImpl RTCVideoEncoderH265 "
+                        "RTCVideoDecoderH265 RTCCastTuningController"
+                    ),
+                }
+            )
+            with self.assertRaisesRegex(
+                VerificationError, "EnableLowLatencyRateControl"
+            ):
                 verify_binaries("macos-arm64", root, runner)
 
     def test_windows_checks_coff_architecture_and_symbols(self) -> None:

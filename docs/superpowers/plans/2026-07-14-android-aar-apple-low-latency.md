@@ -58,7 +58,7 @@ GitHub Actions, GitHub CLI
 - Modify: `tests/test_package.py`
 - Modify: `tests/test_verify.py`
 
-- [ ] **Step 1: Keep the package test RED until both containers use the same
+- [x] **Step 1: Keep the package test RED until both containers use the same
   GN outputs**
 
   The Android fixture creates `libjingle_peerconnection_so.so` beside
@@ -77,7 +77,7 @@ GitHub Actions, GitHub CLI
   self.assertEqual(stream.read(jni_member), raw_jni.read_bytes())
   ```
 
-- [ ] **Step 2: Run the focused RED contract**
+- [x] **Step 2: Run the focused RED contract**
 
   Run:
 
@@ -91,7 +91,7 @@ GitHub Actions, GitHub CLI
   Expected before implementation: missing raw JNI path/AAR and absent
   `llvm-readelf`/`llvm-nm` calls.
 
-- [ ] **Step 3: Stage the stripped JNI library and construct the AAR**
+- [x] **Step 3: Stage the stripped JNI library and construct the AAR**
 
   Implement the fixed output and archive mapping:
 
@@ -112,7 +112,7 @@ GitHub Actions, GitHub CLI
   `_copy_payload()` copies the stripped output-root `.so`; it never substitutes
   `lib.unstripped/libjingle_peerconnection_so.so`.
 
-- [ ] **Step 4: Verify architecture, JNI entry point, and paired bytes**
+- [x] **Step 4: Verify architecture, JNI entry point, and paired bytes**
 
   `verify_binaries()` invokes the checkout's hermetic tools:
 
@@ -128,7 +128,7 @@ GitHub Actions, GitHub CLI
   `verify_android_aar()` requires the three-member structure and compares
   `classes.jar` plus JNI bytes with their raw package counterparts.
 
-- [ ] **Step 5: Run focused and full Python tests**
+- [x] **Step 5: Run focused and full Python tests**
 
   Run:
 
@@ -139,7 +139,7 @@ GitHub Actions, GitHub CLI
 
   Expected: all tests pass.
 
-- [ ] **Step 6: Commit the package contract**
+- [x] **Step 6: Commit the package contract**
 
   ```bash
   git add builder/package.py builder/verify.py tests/test_package.py tests/test_verify.py
@@ -159,7 +159,7 @@ GitHub Actions, GitHub CLI
 - Modify: `tests/test_metadata.py`
 - Modify: `examples/cast-tuning-detail-idle.json`
 
-- [ ] **Step 1: Write schema/default/validation RED tests**
+- [x] **Step 1: Write schema/default/validation RED tests**
 
   Cover these contracts directly in the native test executable:
 
@@ -182,7 +182,7 @@ GitHub Actions, GitHub CLI
   schema 3 fails, explicit schema 2 Baseline is accepted, and low latency plus
   either `data_rate_limit_*` field fails.
 
-- [ ] **Step 2: Run the native RED contract**
+- [x] **Step 2: Run the native RED contract**
 
   ```bash
   python3 -m unittest \
@@ -192,7 +192,7 @@ GitHub Actions, GitHub CLI
   Expected before implementation: schema/default assertion or missing field/API
   failure.
 
-- [ ] **Step 3: Add the version-aware typed model**
+- [x] **Step 3: Add the version-aware typed model**
 
   Use the exact public shape:
 
@@ -213,7 +213,7 @@ GitHub Actions, GitHub CLI
   4.1, and leave both DataRateLimits values unset. For schema 1 set no low
   latency value, Constrained Baseline 4.1, factor `1.5`, and window `1000`.
 
-- [ ] **Step 4: Parse and validate by schema before applying profile defaults**
+- [x] **Step 4: Parse and validate by schema before applying profile defaults**
 
   `ParseJson()` first reads and range-checks `schema_version`, then calls
   `ForProfile(profile, schema_version)`. `ParseEncoder()` accepts
@@ -226,14 +226,14 @@ GitHub Actions, GitHub CLI
       "with DataRateLimits");
   ```
 
-- [ ] **Step 5: Move metadata and examples to schema 2**
+- [x] **Step 5: Move metadata and examples to schema 2**
 
   `BuildMetadata.create()` defaults `tuning_schema_version=2`, metadata loading
   requires `2` for newly built artifacts, `stage_and_package()` records `2`,
   and `examples/cast-tuning-detail-idle.json` uses schema 2, Constrained High,
   and `"video_toolbox_low_latency_rate_control": true`.
 
-- [ ] **Step 6: Run native, metadata, and full tests**
+- [x] **Step 6: Run native, metadata, and full tests**
 
   ```bash
   python3 -m unittest tests.test_cast_tuning_overlay tests.test_metadata -v
@@ -242,7 +242,7 @@ GitHub Actions, GitHub CLI
 
   Expected: all tests pass, including legacy schema 1 behavior.
 
-- [ ] **Step 7: Commit schema 2**
+- [x] **Step 7: Commit schema 2**
 
   ```bash
   git add overlays/m150/common/api/cast_tuning builder/metadata.py \
@@ -260,7 +260,7 @@ GitHub Actions, GitHub CLI
 - Modify: `builder/verify.py`
 - Modify: `tests/test_verify.py`
 
-- [ ] **Step 1: Add RED patch/bridge contract tests**
+- [x] **Step 1: Add RED patch/bridge contract tests**
 
   The test copies the cached exact M150 source file to a temporary tree, applies
   `cast_tuning_hooks.patch --check` and then applies it. It asserts the patched
@@ -273,7 +273,7 @@ GitHub Actions, GitHub CLI
       @(config.encoder.video_toolbox_low_latency_rate_control.value());
   ```
 
-- [ ] **Step 2: Run the RED overlay/verifier tests**
+- [x] **Step 2: Run the RED overlay/verifier tests**
 
   ```bash
   python3 -m unittest tests.test_cast_tuning_overlay tests.test_verify -v
@@ -281,7 +281,7 @@ GitHub Actions, GitHub CLI
 
   Expected before implementation: missing option and low-latency linked symbol.
 
-- [ ] **Step 3: Add the macOS-only encoder specification**
+- [x] **Step 3: Add the macOS-only encoder specification**
 
   Preserve the normal encoder specification and append the low-latency key only
   for an explicit true value:
@@ -299,13 +299,13 @@ GitHub Actions, GitHub CLI
   Creation failure returns the original `OSStatus`; no ordinary-session retry
   is added.
 
-- [ ] **Step 4: Avoid DataRateLimits in low-latency mode**
+- [x] **Step 4: Avoid DataRateLimits in low-latency mode**
 
   `setEncoderBitrateBps:frameRate:` always sets `AverageBitRate`, but builds and
   sets `DataRateLimits` only when the low-latency option is not true. Schema
   validation remains the caller-facing rejection for an explicit conflict.
 
-- [ ] **Step 5: Record encoder/profile compatibility once per session**
+- [x] **Step 5: Record encoder/profile compatibility once per session**
 
   At session creation, query and log Encoder ID. At the first keyframe, derive
   the SPS profile family and compare it with the codec's negotiated
@@ -314,7 +314,7 @@ GitHub Actions, GitHub CLI
   encoder evidence exposed through `RTCCastTuningSnapshot`. Continue delivering
   the encoded frame; do not rewrite SDP or recreate the encoder.
 
-- [ ] **Step 6: Verify patched source and binary contract**
+- [x] **Step 6: Verify patched source and binary contract**
 
   ```bash
   python3 -m unittest tests.test_cast_tuning_overlay tests.test_verify -v
@@ -324,7 +324,7 @@ GitHub Actions, GitHub CLI
   The final `git apply --check` runs against a clean pinned M150 checkout after
   the existing prerequisite patches, matching `prepare_source()` order.
 
-- [ ] **Step 7: Commit the VideoToolbox integration**
+- [x] **Step 7: Commit the VideoToolbox integration**
 
   ```bash
   git add overlays/m150/macos patches/m150/cast_tuning_hooks.patch \

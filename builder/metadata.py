@@ -61,7 +61,7 @@ class BuildMetadata:
         gn_args: Mapping[str, tuple[str, ...]],
         toolchain: Mapping[str, str],
         overlay_hashes: Mapping[str, str] | None = None,
-        tuning_schema_version: int = 1,
+        tuning_schema_version: int = 2,
     ) -> BuildMetadata:
         config = get_target(target)
         return cls(
@@ -132,8 +132,8 @@ class BuildMetadata:
             raise MetadataError("metadata toolchain must be an object")
         if not isinstance(overlay_hashes, dict):
             raise MetadataError("metadata overlay_hashes must be an object")
-        if not isinstance(tuning_schema_version, int) or tuning_schema_version != 1:
-            raise MetadataError("metadata tuning_schema_version must be 1")
+        if not isinstance(tuning_schema_version, int) or tuning_schema_version != 2:
+            raise MetadataError("metadata tuning_schema_version must be 2")
 
         return cls(
             schema_version=SCHEMA_VERSION,

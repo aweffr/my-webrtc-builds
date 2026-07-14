@@ -104,6 +104,9 @@ int main() {
   using webrtc::cast_tuning::FecMode;
   using webrtc::cast_tuning::Profile;
 
+  Expect(webrtc::cast_tuning::kTuningSchemaVersion == 2,
+         "current CastTuning schema must be version 2");
+
   const CastTuningConfig upstream =
       CastTuningConfig::ForProfile(Profile::kUpstream);
   Expect(upstream.IsUpstream(), "UPSTREAM must not override WebRTC defaults");
@@ -112,13 +115,33 @@ int main() {
 
   const CastTuningConfig detail =
       CastTuningConfig::ForProfile(Profile::kDetailIdle);
+  Expect(detail.schema_version == 2, "new profiles must use schema version 2");
   Expect(detail.sender.max_width == 1920, "DETAIL_IDLE width");
   Expect(detail.sender.max_height == 1080, "DETAIL_IDLE height");
   Expect(detail.sender.max_fps == 15, "DETAIL_IDLE fps");
   Expect(detail.sender.start_bitrate_bps == 2500000,
          "DETAIL_IDLE start bitrate");
   Expect(detail.sender.max_bitrate_bps == 6000000, "DETAIL_IDLE max bitrate");
+  Expect(detail.encoder.h264_profile == "CONSTRAINED_HIGH",
+         "schema v2 profiles must default to constrained high");
+  Expect(detail.encoder.video_toolbox_low_latency_rate_control == true,
+         "schema v2 profiles must enable VideoToolbox low-latency rate control");
+  Expect(!detail.encoder.data_rate_limit_factor &&
+             !detail.encoder.data_rate_window_ms,
+         "schema v2 low-latency profiles must not set DataRateLimits defaults");
   Expect(detail.Validate().ok(), "DETAIL_IDLE must validate");
+
+  const CastTuningConfig legacy =
+      CastTuningConfig::ForProfile(Profile::kDetailIdle, 1);
+  Expect(legacy.schema_version == 1, "legacy profile must retain schema version 1");
+  Expect(legacy.encoder.h264_profile == "CONSTRAINED_BASELINE",
+         "schema v1 profile must retain constrained baseline");
+  Expect(!legacy.encoder.video_toolbox_low_latency_rate_control,
+         "schema v1 must not opt in to VideoToolbox low-latency rate control");
+  Expect(legacy.encoder.data_rate_limit_factor == 1.5 &&
+             legacy.encoder.data_rate_window_ms == 1000,
+         "schema v1 must retain DataRateLimits defaults");
+  Expect(legacy.Validate().ok(), "schema v1 profile must remain valid");
 
   CastTuningConfig invalid = detail;
   invalid.sender.min_bitrate_bps = 7000000;

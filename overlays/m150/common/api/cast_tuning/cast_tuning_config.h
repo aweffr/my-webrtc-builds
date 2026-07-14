@@ -7,7 +7,8 @@
 
 namespace webrtc::cast_tuning {
 
-inline constexpr int kTuningSchemaVersion = 1;
+inline constexpr int kTuningSchemaVersion = 2;
+inline constexpr int kMinimumTuningSchemaVersion = 1;
 
 enum class Profile {
   kUpstream,
@@ -75,6 +76,7 @@ struct EncoderConfig {
   std::optional<int> data_rate_window_ms;
   std::optional<int> max_frame_delay_count;
   std::optional<int> max_qp;
+  std::optional<bool> video_toolbox_low_latency_rate_control;
 };
 
 struct ReceiverConfig {
@@ -120,7 +122,9 @@ struct CastTuningConfig {
   TelemetryConfig telemetry;
   ExperimentalConfig experimental;
 
-  static CastTuningConfig ForProfile(Profile profile);
+  static CastTuningConfig ForProfile(
+      Profile profile,
+      int schema_version = kTuningSchemaVersion);
   static std::optional<CastTuningConfig> ParseJson(const std::string& json,
                                                    std::string* error);
   static std::optional<CastTuningConfig> ParseJsonWithOverrides(

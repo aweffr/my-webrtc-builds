@@ -144,6 +144,10 @@ class PackageContractTests(unittest.TestCase):
                 self.capture_commands.append(command)
                 if command[0].replace("\\", "/").endswith("/llvm-ar"):
                     return "peer_connection.o"
+                if command[0].replace("\\", "/").endswith("/llvm-readelf"):
+                    return "Class: ELF64\nMachine: AArch64"
+                if command[0].replace("\\", "/").endswith("/llvm-nm"):
+                    return "0000000000000000 T JNI_OnLoad"
                 if command[:2] == ("jar", "tf"):
                     return (
                         "org/webrtc/CastTuningAndroidConfig.class\n"
@@ -166,6 +170,10 @@ class PackageContractTests(unittest.TestCase):
             workspace = Workspace(root / "work")
             (workspace.src / "api").mkdir(parents=True)
             (workspace.src / "api" / "peer_connection_interface.h").write_text("header")
+            (workspace.src / "sdk" / "android").mkdir(parents=True)
+            (workspace.src / "sdk" / "android" / "AndroidManifest.xml").write_text(
+                '<manifest xmlns:android="http://schemas.android.com/apk/res/android" />\n'
+            )
             tuning = workspace.src / "api" / "cast_tuning"
             tuning.mkdir()
             (tuning / "cast_tuning_config.h").write_text("header")
@@ -175,6 +183,7 @@ class PackageContractTests(unittest.TestCase):
             (output / "lib.java" / "sdk" / "android").mkdir(parents=True)
             (output / "libwebrtc.a").write_bytes(b"archive")
             (output / "lib.java" / "sdk" / "android" / "libwebrtc.jar").write_bytes(b"jar")
+            (output / "libjingle_peerconnection_so.so").write_bytes(b"elf-shared-object")
             (output / "gn-args.txt").write_text("is_debug = false\n")
             patch_dir = root / "patches"
             patch_dir.mkdir()
@@ -208,6 +217,24 @@ class PackageContractTests(unittest.TestCase):
             self.assertTrue((package / "metadata.json").is_file())
             self.assertTrue((package / "lib" / "arm64-v8a" / "libwebrtc.a").is_file())
             self.assertTrue((package / "jar" / "webrtc.jar").is_file())
+            raw_jni = package / "jni" / "arm64-v8a" / "libjingle_peerconnection_so.so"
+            self.assertEqual(raw_jni.read_bytes(), b"elf-shared-object")
+            aar = root / "dist" / "webrtc-m150-android-arm64-v8a.aar"
+            self.assertTrue(aar.is_file())
+            with zipfile.ZipFile(aar) as stream:
+                self.assertEqual(
+                    set(stream.namelist()),
+                    {
+                        "AndroidManifest.xml",
+                        "classes.jar",
+                        "jni/arm64-v8a/libjingle_peerconnection_so.so",
+                    },
+                )
+                self.assertEqual(stream.read("classes.jar"), b"jar")
+                self.assertEqual(
+                    stream.read("jni/arm64-v8a/libjingle_peerconnection_so.so"),
+                    raw_jni.read_bytes(),
+                )
             metadata = load_metadata(package / "metadata.json")
             self.assertEqual(
                 set(metadata.overlay_hashes),

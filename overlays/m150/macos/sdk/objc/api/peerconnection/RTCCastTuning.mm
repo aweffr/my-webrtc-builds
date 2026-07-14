@@ -25,6 +25,47 @@ NSError *CastError(NSString *message) {
                          userInfo:@{NSLocalizedDescriptionKey : message}];
 }
 
+}  // namespace
+
+@interface RTCCastTuningEncoderEvidence : NSObject
+- (void)recordEvent:(NSDictionary<NSString *, id> *)event;
+- (NSDictionary<NSString *, id> *)snapshot;
+@end
+
+@implementation RTCCastTuningEncoderEvidence {
+  NSLock *_lock;
+  NSDictionary<NSString *, id> *_latest;
+  BOOL _profileMismatch;
+}
+
+- (instancetype)init {
+  if ((self = [super init])) {
+    _lock = [[NSLock alloc] init];
+    _latest = @{};
+  }
+  return self;
+}
+
+- (void)recordEvent:(NSDictionary<NSString *, id> *)event {
+  [_lock lock];
+  _latest = [event copy];
+  _profileMismatch =
+      _profileMismatch || [event[@"profile_mismatch"] boolValue];
+  [_lock unlock];
+}
+
+- (NSDictionary<NSString *, id> *)snapshot {
+  [_lock lock];
+  NSMutableDictionary<NSString *, id> *result = [_latest mutableCopy];
+  result[@"profile_mismatch"] = @(_profileMismatch);
+  [_lock unlock];
+  return result;
+}
+
+@end
+
+namespace {
+
 NSDictionary<NSString *, id> *EncoderOptions(
     const webrtc::cast_tuning::CastTuningConfig &config) {
   NSMutableDictionary<NSString *, id> *options =
@@ -53,6 +94,8 @@ NSDictionary<NSString *, id> *EncoderOptions(
   RTC_CAST_NUMBER_OPTION(data_rate_window_ms, @"data_rate_window_ms")
   RTC_CAST_NUMBER_OPTION(max_frame_delay_count, @"max_frame_delay_count")
   RTC_CAST_NUMBER_OPTION(max_qp, @"max_qp")
+  RTC_CAST_NUMBER_OPTION(video_toolbox_low_latency_rate_control,
+                         @"video_toolbox_low_latency_rate_control")
 #undef RTC_CAST_NUMBER_OPTION
   if (config.encoder.h264_profile) {
     options[@"h264_profile"] =
@@ -103,8 +146,10 @@ class ObjCVideoSourceAdapter final
 
 @interface RTCCastTuningConfiguration () {
   std::optional<webrtc::cast_tuning::CastTuningConfig> _nativeConfig;
+  RTCCastTuningEncoderEvidence *_encoderEvidence;
 }
 - (const webrtc::cast_tuning::CastTuningConfig &)nativeConfig;
+- (RTCCastTuningEncoderEvidence *)encoderEvidence;
 @end
 
 @implementation RTCCastTuningConfiguration
@@ -136,6 +181,7 @@ class ObjCVideoSourceAdapter final
   }
   RTCCastTuningConfiguration *result = [[self alloc] init];
   result->_nativeConfig = std::move(*config);
+  result->_encoderEvidence = [[RTCCastTuningEncoderEvidence alloc] init];
   return result;
 }
 
@@ -158,6 +204,10 @@ class ObjCVideoSourceAdapter final
 
 - (const webrtc::cast_tuning::CastTuningConfig &)nativeConfig {
   return _nativeConfig.value();
+}
+
+- (RTCCastTuningEncoderEvidence *)encoderEvidence {
+  return _encoderEvidence;
 }
 
 - (NSString *)profile {
@@ -214,6 +264,11 @@ class ObjCVideoSourceAdapter final
 @property(nonatomic) NSString *effectiveConfigHash;
 @property(nonatomic) uint64_t revision;
 @property(nonatomic) BOOL recreateRequired;
+@property(nonatomic) BOOL profileMismatch;
+@property(nonatomic, nullable) NSString *expectedH264Profile;
+@property(nonatomic, nullable) NSString *actualH264Profile;
+@property(nonatomic, nullable) NSString *videoToolboxEncoderId;
+@property(nonatomic, nullable) NSString *encoderSessionId;
 @end
 
 @implementation RTCCastTuningSnapshot
@@ -320,10 +375,18 @@ class ObjCVideoSourceAdapter final
     return nil;
   }
   id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)> base = encoderFactory;
+  NSMutableDictionary<NSString *, id> *options =
+      [EncoderOptions(configuration.nativeConfig) mutableCopy];
+  options[@"config_hash"] = configuration.effectiveConfigHash;
+  RTCCastTuningEncoderEvidence *evidence = configuration.encoderEvidence;
+  options[@"encoder_evidence_handler"] =
+      [^(NSDictionary<NSString *, id> *event) {
+        [evidence recordEvent:event];
+      } copy];
   id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)> tuned =
       [[RTCCastTuningVideoEncoderFactory alloc]
           initWithBase:base
-               options:EncoderOptions(configuration.nativeConfig)];
+               options:options];
   RTC_OBJC_TYPE(RTCPeerConnectionFactory) *factory =
       [[RTC_OBJC_TYPE(RTCPeerConnectionFactory) alloc]
           initWithEncoderFactory:tuned
@@ -342,6 +405,7 @@ class ObjCVideoSourceAdapter final
   std::unique_ptr<webrtc::cast_tuning::WebRtcCastTuningBackend> _backend;
   std::unique_ptr<webrtc::cast_tuning::CastTuningController> _controller;
   std::unique_ptr<ObjCVideoSourceAdapter> _sourceAdapter;
+  RTCCastTuningEncoderEvidence *_encoderEvidence;
 }
 
 - (instancetype)initWithConfiguration:
@@ -351,6 +415,7 @@ class ObjCVideoSourceAdapter final
         configuration.nativeConfig);
     _controller = std::make_unique<webrtc::cast_tuning::CastTuningController>(
         configuration.nativeConfig, _backend.get());
+    _encoderEvidence = configuration.encoderEvidence;
   }
   return self;
 }
@@ -435,6 +500,12 @@ class ObjCVideoSourceAdapter final
       [NSString stringWithUTF8String:native.effective_config_hash.c_str()];
   snapshot.revision = native.revision;
   snapshot.recreateRequired = native.recreate_required;
+  NSDictionary<NSString *, id> *evidence = [_encoderEvidence snapshot];
+  snapshot.profileMismatch = [evidence[@"profile_mismatch"] boolValue];
+  snapshot.expectedH264Profile = evidence[@"expected_profile"];
+  snapshot.actualH264Profile = evidence[@"actual_profile"];
+  snapshot.videoToolboxEncoderId = evidence[@"encoder_id"];
+  snapshot.encoderSessionId = evidence[@"encoder_session_id"];
   return snapshot;
 }
 

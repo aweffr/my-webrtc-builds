@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "profile": "DETAIL_IDLE",
   "sender": {
     "max_width": 1920,
@@ -25,8 +25,9 @@
     "hardware_policy": "PREFER_HARDWARE",
     "realtime": true,
     "allow_frame_reordering": false,
-    "h264_profile": "CONSTRAINED_BASELINE",
-    "h264_level": "4.1"
+    "h264_profile": "CONSTRAINED_HIGH",
+    "h264_level": "4.1",
+    "video_toolbox_low_latency_rate_control": true
   },
   "receiver": {
     "jitter_minimum_ms": 0,
