@@ -40,7 +40,9 @@ jobs:
         run: |
           set -euxo pipefail
           df -h
-          sudo rm -rf /usr/local/.ghcup /usr/share/swift /usr/share/dotnet /usr/local/lib/android
+          # Keep the runner-provided Android SDK: the AAR consumer smoke needs
+          # its preinstalled, licensed API 36 platform and build tools.
+          sudo rm -rf /usr/local/.ghcup /usr/share/swift /usr/share/dotnet
           df -h
 
       - name: Record runner state
@@ -90,7 +92,7 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
-          ANDROID_HOME: ${{ env.WORK_DIR }}/checkout/src/third_party/android_sdk/public
+          ANDROID_HOME: /usr/local/lib/android/sdk
         run: |
           set -euxo pipefail
           mkdir -p smoke/android-aar/app/libs
