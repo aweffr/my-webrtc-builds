@@ -550,7 +550,7 @@ GitHub Actions, GitHub CLI
 - Modify implementation/tests only for failures reproduced from authoritative
   hosted or runtime evidence.
 
-- [ ] **Step 1: Run the complete local static suite**
+- [x] **Step 1: Run the complete local static suite**
 
   ```bash
   python3 -m compileall -q builder tests
@@ -559,18 +559,18 @@ GitHub Actions, GitHub CLI
   git diff --check
   ```
 
-- [ ] **Step 2: Push one builder commit and trigger affected builds**
+- [x] **Step 2: Push one builder commit and trigger affected builds**
 
   Trigger Android, macOS x64, and macOS arm64 from the same full commit SHA.
   Wait for all three runs; if any code fix changes the commit, rerun all three
   so no preview inputs mix builder commits.
 
-- [ ] **Step 3: Compose the universal XCFramework**
+- [x] **Step 3: Compose the universal XCFramework**
 
   Trigger `package-macos-xcframework.yml` with the successful thin-run IDs and
   the same full builder commit. Download the exact produced zip.
 
-- [ ] **Step 4: Run the downloaded Android artifact smoke**
+- [x] **Step 4: Run the downloaded Android artifact smoke**
 
   ```bash
   tools/android-aar-smoke.sh <android-run-id>
@@ -578,7 +578,7 @@ GitHub Actions, GitHub CLI
 
   Expected: emulator marker `AAR_SMOKE_OK`; evidence SHA equals the workflow AAR.
 
-- [ ] **Step 5: Run the final XCFramework hardware probe**
+- [x] **Step 5: Run the final XCFramework hardware probe**
 
   ```bash
   tools/run-macos-videotoolbox-probe.sh \
@@ -588,13 +588,13 @@ GitHub Actions, GitHub CLI
   Expected: normal and low-latency sessions succeed and evidence binds the
   exact XCFramework SHA.
 
-- [ ] **Step 6: Publish and independently verify preview 1**
+- [x] **Step 6: Publish and independently verify preview 1**
 
   Trigger `publish-macos-android-preview.yml` with the four run IDs, builder
   commit, revision `1`, and both local evidence files. Download all release
   assets and run `shasum -a 256 -c SHA256SUMS`.
 
-- [ ] **Step 7: Record immutable execution evidence**
+- [x] **Step 7: Record immutable execution evidence**
 
   Add build/composition/release run IDs, exact asset SHA-256 values, local OS and
   hardware identity, emulator identity, probe summaries, checksum verification,
@@ -605,27 +605,27 @@ GitHub Actions, GitHub CLI
 **Files:**
 - Modify implementation/tests/docs only for validated Critical/High findings.
 
-- [ ] **Step 1: Prepare the review context package**
+- [x] **Step 1: Prepare the review context package**
 
   Include the original two requirements, both design documents, this plan,
   implementation commits, full diff, local/hosted/runtime results, release
   manifest, and known x64 hardware coverage limitation.
 
-- [ ] **Step 2: Dispatch a clean-context reviewer**
+- [x] **Step 2: Dispatch a clean-context reviewer**
 
   Use a sub-agent without inherited conversation context and restrict review to
   requirement alignment, package/runtime correctness, schema compatibility,
   VideoToolbox failure policy, reproducibility, release integrity, and missing
   Critical/High verification.
 
-- [ ] **Step 3: Fix validated findings and re-review**
+- [x] **Step 3: Fix validated findings and re-review**
 
   Reproduce each accepted issue, add a regression test when behavior is
   testable, implement the smallest strategic fix, rerun the affected and full
   suites, and return changes to the same reviewer. Stop when no required fix
   remains or after three rounds.
 
-- [ ] **Step 4: Perform the requirement-by-requirement completion audit**
+- [x] **Step 4: Perform the requirement-by-requirement completion audit**
 
   Confirm raw JNI/AAR content, app runtime smoke, schema 1 compatibility,
   schema 2 defaults/validation, macOS-only low-latency session creation,
@@ -634,7 +634,7 @@ GitHub Actions, GitHub CLI
   pre-release asset set, post-download checksums, and documented x64 runtime
   gap from authoritative artifacts and logs.
 
-- [ ] **Step 5: Report final repository state**
+- [x] **Step 5: Report final repository state**
 
   Report implementation, core files, design choices, tests and E2E evidence,
   review findings/fixes, commit list, current `main` status, and remaining
@@ -655,3 +655,24 @@ GitHub Actions, GitHub CLI
 - 2026-07-14: The user requires GitHub Actions to build the AAR. Local Android
   E2E must download and run the exact workflow artifact; a local rebuild or
   repack is not admissible evidence.
+- 2026-07-14: Final builder commit `0ff0e8c28325ec1e41fcb9d1acaa6fafbd9dff73`
+  passed all three platform builds: Android run `29351721362`, macOS x64 run
+  `29351723544`, and macOS arm64 run `29351726219`. Android artifact digest is
+  `sha256:d83ad2954e32e0b9e4dca0f48304634aab0d8ea6b01f41c3786cb3381954c11e`,
+  x64 is `sha256:b7681997ebae56c28a1ed421dfb6c34fdade66d47b01f7890a59ad45f611186b`,
+  and arm64 is `sha256:eab2d58c9cb3bf641583b2aaf6c46eb655dbbfa003e305027256647a48708bb5`.
+- 2026-07-14: Android API 31 `Pixel_6_API_31` arm64 smoke passed with marker
+  `AAR_SMOKE_OK`; evidence is `evidence/android-aar/29351721362/evidence.json`.
+  The exact AAR SHA-256 is
+  `4699bc6fd2c7bf96a6762fee22e3b82094192b8aaeabebb0609ca96b813f66a9` and the
+  complete AAR is copied to `/Users/aweffr/Downloads/webrtc-m150-android-arm64-v8a.aar`.
+- 2026-07-14: XCFramework run `29359050764` produced zip SHA-256
+  `8ae44b7ceab069e704acb5a8faaaea5aa4547ea6351bb1bf2bb38e5b343c9678`.
+  Local Apple Silicon probe evidence is
+  `evidence/macos-videotoolbox/8ae44b7ceab069e704acb5a8faaaea5aa4547ea6351bb1bf2bb38e5b343c9678/evidence.json`;
+  normal and low-latency sessions both passed with `profile_mismatch=false`,
+  and low-latency selected the `.rtvc` encoder. x64 hardware runtime remains
+  explicitly unverified.
+- 2026-07-14: Preview release workflow `29359317001` validated packages,
+  published assets, and downloaded `SHA256SUMS` successfully. Published tag:
+  `webrtc-m150.7871.3-0ff0e8c-20260714-macos-android-preview.1`.
