@@ -328,6 +328,8 @@ def create_preview_release_manifest(
         item.get("session_status") != "success" for item in by_mode.values()
     ):
         raise CompositionError("macOS probe evidence requires two successful modes")
+    if any(item.get("profile_mismatch") is not False for item in by_mode.values()):
+        raise CompositionError("macOS probe evidence reports an H264 profile mismatch")
     low_latency_encoder_id = by_mode["low_latency"].get("encoder_id")
     if not isinstance(low_latency_encoder_id, str) or ".rtvc" not in low_latency_encoder_id:
         raise CompositionError("macOS low-latency probe did not select an RTVC encoder")

@@ -5,6 +5,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.widget.TextView;
 import java.util.Arrays;
+import java.util.Collections;
 import org.webrtc.CastTuningConfig;
 import org.webrtc.CastTuningController;
 import org.webrtc.CastTuningSnapshot;
@@ -40,6 +41,10 @@ public final class MainActivity extends Activity {
       CastTuningConfig tuningConfig = CastTuningConfig.fromJson(
           "{\"schema_version\":2,\"profile\":\"DETAIL_IDLE\"}");
       try (CastTuningController controller = new CastTuningController(tuningConfig)) {
+        controller.configureFactory(PeerConnectionFactory.builder());
+        controller.configurePeerConnection(
+            new org.webrtc.PeerConnection.RTCConfiguration(Collections.emptyList()));
+        controller.createVideoDecoderFactory(null).getSupportedCodecs();
         CastTuningSnapshot snapshot = controller.snapshot();
         if (snapshot.sessionId == null || snapshot.sessionId.isEmpty()
             || snapshot.effectiveConfigHash == null

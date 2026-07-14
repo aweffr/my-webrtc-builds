@@ -71,7 +71,8 @@ class CastTuningController {
   CastTuningController(
       CastTuningConfig config,
       CastTuningBackend* backend,
-      std::shared_ptr<CastTelemetryWriter> telemetry_writer = nullptr);
+      std::shared_ptr<CastTelemetryWriter> telemetry_writer = nullptr,
+      bool emit_initial_telemetry = true);
   ~CastTuningController();
 
   CastApplyResult ApplyLivePatch(const CastTuningLivePatch& patch);

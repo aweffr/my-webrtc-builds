@@ -115,7 +115,8 @@ jq -e '
     .sps_profile != "UNKNOWN" and
     .reported_actual_profile == .sps_profile and
     .reported_expected_profile == .negotiated_profile and
-    .reported_profile_mismatch == .profile_mismatch)) and
+    .reported_profile_mismatch == .profile_mismatch and
+    .profile_mismatch == false)) and
   ((.modes[] | select(.mode == "low_latency") | .encoder_id) | contains(".rtvc"))
 ' "$evidence_path" >/dev/null
 

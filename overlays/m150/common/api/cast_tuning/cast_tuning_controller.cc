@@ -170,13 +170,17 @@ void MergeConfig(CastTuningConfig* config, const CastTuningLivePatch& patch) {
 CastTuningController::CastTuningController(CastTuningConfig config,
                                            CastTuningBackend* backend,
                                            std::shared_ptr<CastTelemetryWriter>
-                                               telemetry_writer)
+                                               telemetry_writer,
+                                           bool emit_initial_telemetry)
     : config_(std::move(config)),
       backend_(backend),
       shared_telemetry_writer_(std::move(telemetry_writer)) {
   snapshot_.session_id = NewSessionId();
   snapshot_.profile = config_.profile;
   snapshot_.effective_config_hash = ConfigFingerprint(config_);
+  if (!emit_initial_telemetry) {
+    return;
+  }
   if (shared_telemetry_writer_) {
     EmitConfigEvent("config_applied", "initial");
   } else if (config_.telemetry.jsonl_path && !config_.telemetry.jsonl_path->empty()) {

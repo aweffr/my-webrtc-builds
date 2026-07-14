@@ -282,7 +282,8 @@ class ObjCVideoSourceAdapter final
 - (NSString *)effectiveConfigHash {
   webrtc::cast_tuning::WebRtcCastTuningBackend backend(*_nativeConfig);
   webrtc::cast_tuning::CastTuningController controller(*_nativeConfig,
-                                                       &backend, _telemetryWriter);
+                                                       &backend, _telemetryWriter,
+                                                       false);
   return [NSString
       stringWithUTF8String:controller.snapshot().effective_config_hash.c_str()];
 }
