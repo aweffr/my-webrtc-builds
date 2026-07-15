@@ -22,12 +22,12 @@ from builder.package import (
 from builder.source import Workspace
 
 
-def java17_jar_bytes() -> bytes:
+def java8_jar_bytes() -> bytes:
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as stream:
         stream.writestr(
             "org/webrtc/Contract.class",
-            b"\xca\xfe\xba\xbe\x00\x00\x00\x3d",
+            b"\xca\xfe\xba\xbe\x00\x00\x00\x34",
         )
     return output.getvalue()
 
@@ -192,7 +192,7 @@ class PackageContractTests(unittest.TestCase):
             output = workspace.out / "android" / "arm64-v8a"
             (output / "lib.java" / "sdk" / "android").mkdir(parents=True)
             (output / "libwebrtc.a").write_bytes(b"archive")
-            jar_bytes = java17_jar_bytes()
+            jar_bytes = java8_jar_bytes()
             (output / "lib.java" / "sdk" / "android" / "libwebrtc.jar").write_bytes(
                 jar_bytes
             )

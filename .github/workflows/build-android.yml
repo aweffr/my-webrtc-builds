@@ -79,7 +79,9 @@ jobs:
             --builder-commit "$GITHUB_SHA" \
             2>&1 | tee "$DIAGNOSTICS_DIR/build.log"
 
-      - name: Set up Java 17 for AAR consumer
+      # AGP runs on JDK 17, while the AAR and consumer source contract remains
+      # Java 8 bytecode (classfile major 52).
+      - name: Set up JDK 17 for Java 8 AAR consumer
         if: steps.build.outcome == 'success'
         uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
         with:

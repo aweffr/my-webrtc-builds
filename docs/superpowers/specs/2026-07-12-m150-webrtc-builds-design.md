@@ -131,11 +131,13 @@ relevant logs. The verified AAR bytes are the bytes later uploaded to the
 pre-release. This is an app-consumability gate, not an Android TV UI or
 end-to-end screencast test.
 
-The AAR Java compatibility contract is Java 17 classfile major 61 or lower.
-The package verifier inspects every class in `classes.jar`, and the AAR-only
-consumer build runs on JDK 17 with Java 17 compile options. This keeps the
-published package aligned with the documented Android CLI environment instead
-of requiring consumers to discover a hidden JDK 21 build dependency.
+The AAR Java compatibility contract is Java 8 classfile major 52 or lower. The
+package verifier inspects every class in `classes.jar`, and the AAR-only
+consumer compiles with Java 8 source and target compatibility. Its current AGP
+runs on JDK 17, but that build-tool runtime is not part of the AAR bytecode
+contract and does not force downstream application source compatibility to
+Java 17. M150's three Java 10 local-variable `var` usages are patched to
+explicit types before compilation.
 
 ## Error handling and verification
 

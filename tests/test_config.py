@@ -48,7 +48,7 @@ class TargetConfigTests(unittest.TestCase):
     def test_cast_tuning_is_overlaid_for_windows_macos_and_android(self) -> None:
         android = get_target("android")
         self.assertEqual(android.overlays, ("common", "android"))
-        self.assertIn("android_java17.patch", android.patches)
+        self.assertIn("android_java8.patch", android.patches)
         self.assertEqual(android.patches[-1], "cast_tuning_hooks.patch")
         self.assertEqual(
             android.validation_targets,

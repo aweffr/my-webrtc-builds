@@ -25,7 +25,7 @@ COMMON_REQUIRED_PATHS = (
     "SHA256SUMS",
 )
 
-ANDROID_MAX_CLASSFILE_MAJOR = 61
+ANDROID_MAX_CLASSFILE_MAJOR = 52
 
 
 def verify_package_layout(target: str, root: Path) -> None:
@@ -288,7 +288,7 @@ def _verify_android_classfile_versions(classes_jar: bytes) -> None:
                 major = int.from_bytes(header[6:8], "big")
                 if major > ANDROID_MAX_CLASSFILE_MAJOR:
                     raise VerificationError(
-                        f"Android classfile major {major} exceeds Java 17 contract "
+                        f"Android classfile major {major} exceeds Java 8 contract "
                         f"({ANDROID_MAX_CLASSFILE_MAJOR}): {name}"
                     )
     except zipfile.BadZipFile as error:

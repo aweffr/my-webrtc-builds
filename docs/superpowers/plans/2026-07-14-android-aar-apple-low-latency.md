@@ -676,9 +676,15 @@ GitHub Actions, GitHub CLI
 - 2026-07-14: Preview release workflow `29359317001` validated packages,
   published assets, and downloaded `SHA256SUMS` successfully. Published tag:
   `webrtc-m150.7871.3-0ff0e8c-20260714-macos-android-preview.1`.
-- 2026-07-16: Downstream JDK 17 compilation exposed that the preview AAR's
+- 2026-07-16: Downstream compilation exposed that the preview AAR's
   `classes.jar` uses classfile major 65 because pinned Chromium M150 hardcodes
-  Java 21. The follow-up contract patches both Javac and Turbine to Java 17,
-  rejects classfile major values above 61 during package verification, and
-  moves the AAR-only consumer smoke back to JDK/Java 17. A new hosted Android
-  artifact and scoped preview are required before downstream E2E resumes.
+  Java 21. Inspection of all 215 Java files under the pinned WebRTC
+  `sdk/android` archive and all 42 files under pinned `jni_zero` found only
+  three Java 10 local-variable `var` usages and no later language feature in
+  the public source closure. The final follow-up contract replaces those three
+  usages with explicit types, patches Javac and Turbine to `--release 8`,
+  rejects classfile major values above 52, and compiles the AAR-only consumer
+  with Java 8 source/target compatibility. AGP still runs on JDK 17; that does
+  not raise the downstream AAR bytecode contract. Java 17 run `29434169134`
+  was cancelled as superseded. A new hosted Android artifact and scoped
+  preview are required before downstream E2E resumes.

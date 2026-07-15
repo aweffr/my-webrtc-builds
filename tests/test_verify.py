@@ -99,15 +99,15 @@ class PackageLayoutVerificationTests(unittest.TestCase):
 
 
 class AndroidAARVerificationTests(unittest.TestCase):
-    def test_accepts_java17_classfiles(self) -> None:
+    def test_accepts_java8_classfiles(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            aar, raw_root = self._write_aar(Path(directory), classfile_major=61)
+            aar, raw_root = self._write_aar(Path(directory), classfile_major=52)
             verify_android_aar(aar, raw_root)
 
-    def test_rejects_java21_classfiles(self) -> None:
+    def test_rejects_classfiles_newer_than_java8(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            aar, raw_root = self._write_aar(Path(directory), classfile_major=65)
-            with self.assertRaisesRegex(VerificationError, "classfile major 65"):
+            aar, raw_root = self._write_aar(Path(directory), classfile_major=53)
+            with self.assertRaisesRegex(VerificationError, "classfile major 53"):
                 verify_android_aar(aar, raw_root)
 
     @staticmethod
