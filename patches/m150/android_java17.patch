@@ -1,0 +1,24 @@
+diff --git a/build/android/gyp/compile_java.py b/build/android/gyp/compile_java.py
+--- a/build/android/gyp/compile_java.py
++++ b/build/android/gyp/compile_java.py
+@@ -604,7 +604,7 @@ def main(argv,
+       # Jacoco does not currently support a higher value.
+       '--release',
+       # Keep consistent with javac_cmd in //build/android/gyp/turbine.py.
+-      '21',
++      '17',
+       # Chromium only allows UTF8 source files.  Being explicit avoids
+       # javac pulling a default encoding from the user's environment.
+       '-encoding',
+diff --git a/build/android/gyp/turbine.py b/build/android/gyp/turbine.py
+--- a/build/android/gyp/turbine.py
++++ b/build/android/gyp/turbine.py
+@@ -91,7 +91,6 @@ def main(argv):
+   # Keep consistent with javac_args release flag in
+   # //build/android/gyp/compile_java.py and
+   # compileOptions in //build/android/gradle/android.jinja
+-  javac_cmd = ['--release', '21']
++  javac_cmd = ['--release', '17']
+-
+   # Turbine reads lists from command line args by consuming args until one
+   # starts with double dash (--). Thus command line args should be grouped

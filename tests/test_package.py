@@ -22,6 +22,16 @@ from builder.package import (
 from builder.source import Workspace
 
 
+def java17_jar_bytes() -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as stream:
+        stream.writestr(
+            "org/webrtc/Contract.class",
+            b"\xca\xfe\xba\xbe\x00\x00\x00\x3d",
+        )
+    return output.getvalue()
+
+
 class HeaderManifestTests(unittest.TestCase):
     def test_manifest_depends_on_relative_path_and_content(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -182,7 +192,10 @@ class PackageContractTests(unittest.TestCase):
             output = workspace.out / "android" / "arm64-v8a"
             (output / "lib.java" / "sdk" / "android").mkdir(parents=True)
             (output / "libwebrtc.a").write_bytes(b"archive")
-            (output / "lib.java" / "sdk" / "android" / "libwebrtc.jar").write_bytes(b"jar")
+            jar_bytes = java17_jar_bytes()
+            (output / "lib.java" / "sdk" / "android" / "libwebrtc.jar").write_bytes(
+                jar_bytes
+            )
             (output / "libjingle_peerconnection_so.so").write_bytes(b"elf-shared-object")
             (output / "gn-args.txt").write_text("is_debug = false\n")
             patch_dir = root / "patches"
@@ -230,7 +243,7 @@ class PackageContractTests(unittest.TestCase):
                         "jni/arm64-v8a/libjingle_peerconnection_so.so",
                     },
                 )
-                self.assertEqual(stream.read("classes.jar"), b"jar")
+                self.assertEqual(stream.read("classes.jar"), jar_bytes)
                 self.assertEqual(
                     stream.read("jni/arm64-v8a/libjingle_peerconnection_so.so"),
                     raw_jni.read_bytes(),

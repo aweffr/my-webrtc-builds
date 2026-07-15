@@ -1,8 +1,15 @@
+import io
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
-from builder.verify import VerificationError, verify_binaries, verify_package_layout
+from builder.verify import (
+    VerificationError,
+    verify_android_aar,
+    verify_binaries,
+    verify_package_layout,
+)
 
 
 def create_common_tree(root: Path) -> None:
@@ -89,6 +96,40 @@ class PackageLayoutVerificationTests(unittest.TestCase):
             tuning.unlink()
             with self.assertRaisesRegex(VerificationError, "cast_tuning_config.h"):
                 verify_package_layout("windows-x64", root)
+
+
+class AndroidAARVerificationTests(unittest.TestCase):
+    def test_accepts_java17_classfiles(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            aar, raw_root = self._write_aar(Path(directory), classfile_major=61)
+            verify_android_aar(aar, raw_root)
+
+    def test_rejects_java21_classfiles(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            aar, raw_root = self._write_aar(Path(directory), classfile_major=65)
+            with self.assertRaisesRegex(VerificationError, "classfile major 65"):
+                verify_android_aar(aar, raw_root)
+
+    @staticmethod
+    def _write_aar(root: Path, *, classfile_major: int) -> tuple[Path, Path]:
+        jar_bytes = io.BytesIO()
+        with zipfile.ZipFile(jar_bytes, "w") as stream:
+            stream.writestr(
+                "org/webrtc/Contract.class",
+                b"\xca\xfe\xba\xbe\x00\x00" + classfile_major.to_bytes(2, "big"),
+            )
+        raw_root = root / "raw"
+        (raw_root / "jar").mkdir(parents=True)
+        (raw_root / "jni" / "arm64-v8a").mkdir(parents=True)
+        (raw_root / "jar" / "webrtc.jar").write_bytes(jar_bytes.getvalue())
+        jni = b"elf"
+        (raw_root / "jni" / "arm64-v8a" / "libjingle_peerconnection_so.so").write_bytes(jni)
+        aar = root / "webrtc.aar"
+        with zipfile.ZipFile(aar, "w") as stream:
+            stream.writestr("AndroidManifest.xml", "<manifest />")
+            stream.writestr("classes.jar", jar_bytes.getvalue())
+            stream.writestr("jni/arm64-v8a/libjingle_peerconnection_so.so", jni)
+        return aar, raw_root
 
 
 class FakeRunner:

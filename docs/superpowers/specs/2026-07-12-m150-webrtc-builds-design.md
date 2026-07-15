@@ -131,6 +131,12 @@ relevant logs. The verified AAR bytes are the bytes later uploaded to the
 pre-release. This is an app-consumability gate, not an Android TV UI or
 end-to-end screencast test.
 
+The AAR Java compatibility contract is Java 17 classfile major 61 or lower.
+The package verifier inspects every class in `classes.jar`, and the AAR-only
+consumer build runs on JDK 17 with Java 17 compile options. This keeps the
+published package aligned with the documented Android CLI environment instead
+of requiring consumers to discover a hidden JDK 21 build dependency.
+
 ## Error handling and verification
 
 The builder fails immediately when source identity, patch applicability, expected output, architecture, metadata schema, package safety, or compatibility checks fail. Subprocess failures preserve the command and exit status in Actions logs without printing credentials.

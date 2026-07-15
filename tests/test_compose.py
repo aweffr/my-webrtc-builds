@@ -1,5 +1,6 @@
 import json
 import hashlib
+import io
 import tempfile
 import unittest
 import zipfile
@@ -16,6 +17,16 @@ from builder.compose import (
 from builder.config import get_target
 from builder.metadata import BuildMetadata, save_metadata
 from builder.package import create_tar_gz, create_zip, package_filename
+
+
+def java17_jar_bytes() -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as stream:
+        stream.writestr(
+            "org/webrtc/Contract.class",
+            b"\xca\xfe\xba\xbe\x00\x00\x00\x3d",
+        )
+    return output.getvalue()
 
 
 def build_metadata(target: str, *, builder_commit: str = "a" * 40) -> BuildMetadata:
@@ -51,7 +62,7 @@ def create_package(
         (framework / "Headers" / "WebRTC.h").write_text(framework_header)
     elif target == "android":
         (root / "jar").mkdir()
-        (root / "jar" / "webrtc.jar").write_bytes(b"android-classes")
+        (root / "jar" / "webrtc.jar").write_bytes(java17_jar_bytes())
         jni = root / "jni" / "arm64-v8a"
         jni.mkdir(parents=True)
         (jni / "libjingle_peerconnection_so.so").write_bytes(b"android-jni")
@@ -71,7 +82,7 @@ def create_android_aar(directory: Path) -> Path:
     aar = directory / "webrtc-m150-android-arm64-v8a.aar"
     with zipfile.ZipFile(aar, "w") as stream:
         stream.writestr("AndroidManifest.xml", "<manifest />")
-        stream.writestr("classes.jar", b"android-classes")
+        stream.writestr("classes.jar", java17_jar_bytes())
         stream.writestr(
             "jni/arm64-v8a/libjingle_peerconnection_so.so", b"android-jni"
         )

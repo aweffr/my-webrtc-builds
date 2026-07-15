@@ -676,3 +676,9 @@ GitHub Actions, GitHub CLI
 - 2026-07-14: Preview release workflow `29359317001` validated packages,
   published assets, and downloaded `SHA256SUMS` successfully. Published tag:
   `webrtc-m150.7871.3-0ff0e8c-20260714-macos-android-preview.1`.
+- 2026-07-16: Downstream JDK 17 compilation exposed that the preview AAR's
+  `classes.jar` uses classfile major 65 because pinned Chromium M150 hardcodes
+  Java 21. The follow-up contract patches both Javac and Turbine to Java 17,
+  rejects classfile major values above 61 during package verification, and
+  moves the AAR-only consumer smoke back to JDK/Java 17. A new hosted Android
+  artifact and scoped preview are required before downstream E2E resumes.

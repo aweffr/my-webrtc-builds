@@ -79,12 +79,12 @@ jobs:
             --builder-commit "$GITHUB_SHA" \
             2>&1 | tee "$DIAGNOSTICS_DIR/build.log"
 
-      - name: Set up Java 21 for AAR consumer
+      - name: Set up Java 17 for AAR consumer
         if: steps.build.outcome == 'success'
         uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "17"
 
       - name: Compile AAR-only consumer APK
         id: consumer

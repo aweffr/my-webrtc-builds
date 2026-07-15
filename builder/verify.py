@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import re
 import zipfile
 from pathlib import Path
@@ -23,6 +24,8 @@ COMMON_REQUIRED_PATHS = (
     "NOTICE",
     "SHA256SUMS",
 )
+
+ANDROID_MAX_CLASSFILE_MAJOR = 61
 
 
 def verify_package_layout(target: str, root: Path) -> None:
@@ -260,9 +263,33 @@ def verify_android_aar(aar: Path, raw_root: Path) -> None:
                 f"unexpected Android AAR members: {sorted(actual)}; "
                 f"expected {sorted(expected)}"
             )
-        if stream.read("classes.jar") != (raw_root / "jar" / "webrtc.jar").read_bytes():
+        classes_jar = stream.read("classes.jar")
+        if classes_jar != (raw_root / "jar" / "webrtc.jar").read_bytes():
             raise VerificationError("AAR classes.jar differs from raw Android package")
+        _verify_android_classfile_versions(classes_jar)
         if stream.read("jni/arm64-v8a/libjingle_peerconnection_so.so") != (
             raw_root / "jni" / "arm64-v8a" / "libjingle_peerconnection_so.so"
         ).read_bytes():
             raise VerificationError("AAR JNI library differs from raw Android package")
+
+
+def _verify_android_classfile_versions(classes_jar: bytes) -> None:
+    try:
+        with zipfile.ZipFile(io.BytesIO(classes_jar)) as stream:
+            class_names = sorted(
+                name for name in stream.namelist() if name.endswith(".class")
+            )
+            if not class_names:
+                raise VerificationError("Android classes.jar contains no class files")
+            for name in class_names:
+                header = stream.read(name)[:8]
+                if len(header) != 8 or header[:4] != b"\xca\xfe\xba\xbe":
+                    raise VerificationError(f"invalid Java classfile header: {name}")
+                major = int.from_bytes(header[6:8], "big")
+                if major > ANDROID_MAX_CLASSFILE_MAJOR:
+                    raise VerificationError(
+                        f"Android classfile major {major} exceeds Java 17 contract "
+                        f"({ANDROID_MAX_CLASSFILE_MAJOR}): {name}"
+                    )
+    except zipfile.BadZipFile as error:
+        raise VerificationError("Android classes.jar is not a valid ZIP archive") from error

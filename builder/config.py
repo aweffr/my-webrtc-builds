@@ -141,6 +141,7 @@ TARGETS: Mapping[str, TargetConfig] = MappingProxyType(
                 "add_deps.patch",
                 "h265.patch",
                 "h265_android.patch",
+                "android_java17.patch",
                 "cast_tuning_hooks.patch",
             ),
             overlays=("common", "android"),
