@@ -32,8 +32,14 @@ Java 8 language features except for three Java 10 local-variable `var` usages.
 The patch changes those local variables to their explicit types and changes
 both matching `--release` values to Java 8. The resulting public
 `webrtc.jar`/AAR contract is classfile major 52; the JDK used to run a consumer's
-Android Gradle Plugin remains a separate concern. The exact inspected sources
-are
+Android Gradle Plugin remains a separate concern.
+
+The first hosted Java 8 build exposed a separate generated-source issue: M150's
+JNI Zero generators import Java 9's `javax.annotation.processing.Generated`.
+Under `--release 8` that type is intentionally unavailable. The patch switches
+all four generator paths to Java 8's `javax.annotation.Generated`; its
+SOURCE-retained annotation does not become an AAR runtime dependency. The exact
+inspected sources are
 [`compile_java.py`](https://chromium.googlesource.com/chromium/src/build/+/d296a9fec6186f2c109758c7d3f93cbef936dfc3/android/gyp/compile_java.py)
 (`543f5ce3c37cfc599d4a7d7a09b5fda04657c879a68c1673924a60961507a4ac`) and
 [`turbine.py`](https://chromium.googlesource.com/chromium/src/build/+/d296a9fec6186f2c109758c7d3f93cbef936dfc3/android/gyp/turbine.py)
@@ -44,7 +50,16 @@ are
 (`4bd82c6314050f43f43591eeead7f74b6eb611b70a9b007b554e47ce9b40b7c2`),
 and
 [`CommonApis.java`](https://chromium.googlesource.com/chromium/src/third_party/+/7c92732938de0ef7e28f5da231994723f938f407/jni_zero/java/src/org/jni_zero/CommonApis.java)
-(`ab105e273deddaa1601b75b5f2c22d62ff890dd94f42dc57e0a20ba3898e8100`).
+(`ab105e273deddaa1601b75b5f2c22d62ff890dd94f42dc57e0a20ba3898e8100`),
+[`proxy_impl_java.py`](https://chromium.googlesource.com/chromium/src/third_party/+/7c92732938de0ef7e28f5da231994723f938f407/jni_zero/codegen/proxy_impl_java.py)
+(`1c5daee6bc7f68b2e055f5d4be36f2bf098da2f34ca352699ec43a3b89d1c227`),
+[`placeholder_java_type.py`](https://chromium.googlesource.com/chromium/src/third_party/+/7c92732938de0ef7e28f5da231994723f938f407/jni_zero/codegen/placeholder_java_type.py)
+(`68e4ebb33e1e93d8a9fa6101e503298ba33a9a5a8902aa78cc6d7de4af1b9526`),
+[`gen_jni_java.py`](https://chromium.googlesource.com/chromium/src/third_party/+/7c92732938de0ef7e28f5da231994723f938f407/jni_zero/codegen/gen_jni_java.py)
+(`c5b65755015c425b4616e769af86bad0ca7d56ba34283bd510d88d7205ef284b`),
+and
+[`placeholder_gen_jni_java.py`](https://chromium.googlesource.com/chromium/src/third_party/+/7c92732938de0ef7e28f5da231994723f938f407/jni_zero/codegen/placeholder_gen_jni_java.py)
+(`c038b21b881cf6345a495ce402c4064555624fb53d4456f981275d1eef7dc68d`).
 
 | File | SHA-256 |
 | --- | --- |
@@ -55,7 +70,7 @@ and
 | `h265_ios.patch` | `13cb55f38774a6312ca0b965779f8c48e581d23ae31680e813f7418966c5482a` |
 | `codec_licenses.patch` | `96766489dd4f6fb5cf2db77befcf53863c7a5431c5995d6658ff846a78baf71b` |
 | `macos_h265_framework.patch` | `948a39aad68e4d579bb948ca05fcbcdf40bbe1bfccb4f42419754982fe870ff4` |
-| `android_java8.patch` | `81b32c48a6c3df3de581d2344cbc897236bc927c327b4db7478cbda49fee722b` |
+| `android_java8.patch` | `88aa7c036d677815cd461e499d7c7d9f14fdfcc66574f943c89c8891c5f3a980` |
 
 `cast_tuning_hooks.patch` is authored by this project under Apache-2.0. It
 contains only the M150 GN wiring and source hooks required by the versioned

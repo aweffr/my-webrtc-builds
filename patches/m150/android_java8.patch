@@ -47,6 +47,64 @@ diff --git a/sdk/android/api/org/webrtc/NetworkMonitorAutoDetect.java b/sdk/andr
            connectivityManagerDelegate.registerNetworkCallback(request, unifiedCommunicationsCb);
          } catch (Exception ex) {
            Logging.e(TAG, "Failed to registerNetworkCallback for unifiedCommunications");
+diff --git a/third_party/jni_zero/codegen/gen_jni_java.py b/third_party/jni_zero/codegen/gen_jni_java.py
+--- a/third_party/jni_zero/codegen/gen_jni_java.py
++++ b/third_party/jni_zero/codegen/gen_jni_java.py
+@@ -66,5 +66,5 @@ package {full_gen_jni_class.package_with_dots};
+-
+-import javax.annotation.processing.Generated;
+-
++
++import javax.annotation.Generated;
++
+ @Generated("JNI Zero")
+ @SuppressWarnings({{"rawtypes", "unchecked"}})
+@@ -98,5 +98,5 @@ package {gen_jni_class.package_with_dots};
+-
+-import javax.annotation.processing.Generated;
+-
++
++import javax.annotation.Generated;
++
+ @Generated("JNI Zero")
+ public class {gen_jni_class.name}""")
+diff --git a/third_party/jni_zero/codegen/placeholder_gen_jni_java.py b/third_party/jni_zero/codegen/placeholder_gen_jni_java.py
+--- a/third_party/jni_zero/codegen/placeholder_gen_jni_java.py
++++ b/third_party/jni_zero/codegen/placeholder_gen_jni_java.py
+@@ -17,5 +17,5 @@ package {gen_jni_class.package_with_dots};
+-
+-import javax.annotation.processing.Generated;
++
++import javax.annotation.Generated;
+ import org.jni_zero.internal.NullUnmarked;
+-
++
+ @Generated("JNI Zero")
+diff --git a/third_party/jni_zero/codegen/placeholder_java_type.py b/third_party/jni_zero/codegen/placeholder_java_type.py
+--- a/third_party/jni_zero/codegen/placeholder_java_type.py
++++ b/third_party/jni_zero/codegen/placeholder_java_type.py
+@@ -27,5 +27,5 @@ package {java_class.class_without_prefix.package_with_dots};
+-
+-import javax.annotation.processing.Generated;
+-
++
++import javax.annotation.Generated;
++
+ @Generated("JNI Zero")
+ @SuppressWarnings({{"rawtypes", "unchecked"}})
+diff --git a/third_party/jni_zero/codegen/proxy_impl_java.py b/third_party/jni_zero/codegen/proxy_impl_java.py
+--- a/third_party/jni_zero/codegen/proxy_impl_java.py
++++ b/third_party/jni_zero/codegen/proxy_impl_java.py
+@@ -19,8 +19,8 @@ class _Context:
+     self.interface_name = jni_obj.proxy_interface.name_with_dots
+     self.proxy_class = java_types.JavaClass(
+         f'{self.jni_obj.java_class.full_name_with_slashes}Jni')
+     self.type_resolver = java_types.TypeResolver(self.proxy_class)
+     imports = jni_obj.CollectClassesToBeImported() + [
+-        java_types.JavaClass('javax/annotation/processing/Generated'),
++        java_types.JavaClass('javax/annotation/Generated'),
+         java_types.JavaClass('org/jni_zero/CheckDiscard'),
+         java_types.JavaClass('org/jni_zero/JniTestInstanceHolder'),
 diff --git a/third_party/jni_zero/java/src/org/jni_zero/CommonApis.java b/third_party/jni_zero/java/src/org/jni_zero/CommonApis.java
 --- a/third_party/jni_zero/java/src/org/jni_zero/CommonApis.java
 +++ b/third_party/jni_zero/java/src/org/jni_zero/CommonApis.java

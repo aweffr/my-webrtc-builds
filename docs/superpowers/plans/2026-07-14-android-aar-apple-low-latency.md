@@ -688,3 +688,10 @@ GitHub Actions, GitHub CLI
   not raise the downstream AAR bytecode contract. Java 17 run `29434169134`
   was cancelled as superseded. A new hosted Android artifact and scoped
   preview are required before downstream E2E resumes.
+- 2026-07-16: Hosted Java 8 run `29435127085` reached the native build but
+  failed when generated JNI Zero sources imported Java 9's
+  `javax.annotation.processing.Generated` under `--release 8`. The source
+  generator fix uses Java 8's SOURCE-retained `javax.annotation.Generated`
+  across per-file proxy, placeholder and aggregate GEN_JNI paths. A local
+  JDK 17 `javac --release 8` probe produced classfile major 52; a replacement
+  hosted run remains the release authority.

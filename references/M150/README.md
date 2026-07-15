@@ -20,6 +20,33 @@ BSD license is preserved as `upstream/LICENSE`.
 
 ## Why these files are retained
 
+### Android Java 8 package contract
+
+- `build/android/gyp/compile_java.py`
+- `build/android/gyp/turbine.py`
+- `sdk/android/api/org/webrtc/EglRenderer.java`
+- `sdk/android/api/org/webrtc/NetworkMonitorAutoDetect.java`
+- `third_party/jni_zero/java/src/org/jni_zero/CommonApis.java`
+
+Together with the JNI generator files below, these are every upstream source
+modified by `android_java8.patch`. The two build files come from Chromium build
+commit `d296a9fec6186f2c109758c7d3f93cbef936dfc3`; the SDK files come from the
+pinned WebRTC commit; and `CommonApis.java` comes from Chromium third-party
+commit `7c92732938de0ef7e28f5da231994723f938f407`.
+
+### Android JNI Zero Java generation
+
+- `third_party/jni_zero/codegen/proxy_impl_java.py`
+- `third_party/jni_zero/codegen/placeholder_java_type.py`
+- `third_party/jni_zero/codegen/gen_jni_java.py`
+- `third_party/jni_zero/codegen/placeholder_gen_jni_java.py`
+
+These four unmodified files come from Chromium `third_party` commit
+`7c92732938de0ef7e28f5da231994723f938f407`, pinned by the M150 checkout. They
+cover every generator path that emits `@Generated` into JNI Java sources and
+are retained because Java language scans alone cannot reveal generated-source
+compatibility failures.
+
 ### Capture cadence and zero-hertz behavior
 
 - `video/frame_cadence_adapter.cc`
@@ -62,6 +89,6 @@ cd upstream
 shasum -a 256 -c SHA256SUMS
 ```
 
-When the pinned WebRTC commit changes, replace the retained files from the new
-commit and regenerate `SHA256SUMS` in the same change. Do not silently mix files
-from different upstream revisions.
+When the pinned WebRTC or Chromium third-party commit changes, replace the
+corresponding retained files and regenerate `SHA256SUMS` in the same change. Do
+not silently mix files from different upstream revisions.
