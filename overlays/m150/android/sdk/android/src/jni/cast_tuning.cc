@@ -23,6 +23,7 @@ class ConfigOnlyBackend final : public cast_tuning::CastTuningBackend {
     state_.max_width = config.sender.max_width.value_or(0);
     state_.max_height = config.sender.max_height.value_or(0);
     state_.max_fps = config.sender.max_fps.value_or(0);
+    state_.max_qp = config.encoder.max_qp.value_or(0);
     state_.jitter_minimum_ms = config.receiver.jitter_minimum_ms.value_or(0);
   }
 
@@ -39,6 +40,11 @@ class ConfigOnlyBackend final : public cast_tuning::CastTuningBackend {
   }
   bool ApplyReceiver(const cast_tuning::BackendState& state,
                      std::string*) override {
+    state_ = state;
+    return true;
+  }
+  bool ApplyEncoder(const cast_tuning::BackendState& state,
+                    std::string*) override {
     state_ = state;
     return true;
   }

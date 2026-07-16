@@ -32,6 +32,7 @@ struct BackendState {
   NetworkPriority network_priority = NetworkPriority::kUnspecified;
   int jitter_minimum_ms = 0;
   int stale_decoded_frame_ms = 0;
+  int max_qp = 0;
 };
 
 class CastTuningBackend {
@@ -40,6 +41,7 @@ class CastTuningBackend {
   virtual BackendState CaptureState() const = 0;
   virtual bool ApplyBitrate(const BackendState& state, std::string* error) = 0;
   virtual bool ApplySender(const BackendState& state, std::string* error) = 0;
+  virtual bool ApplyEncoder(const BackendState& state, std::string* error) = 0;
   virtual bool ApplyReceiver(const BackendState& state, std::string* error) = 0;
 };
 
@@ -85,6 +87,8 @@ class CastTuningController {
   bool RollBackBitrate(const BackendState& old_state, CastApplyResult* result);
   bool RollBackSenderAndBitrate(const BackendState& old_state,
                                 CastApplyResult* result);
+  bool RollBackEncoderSenderAndBitrate(const BackendState& old_state,
+                                       CastApplyResult* result);
   void EmitConfigEvent(const char* event_type, const std::string& detail);
 
   CastTuningConfig config_;

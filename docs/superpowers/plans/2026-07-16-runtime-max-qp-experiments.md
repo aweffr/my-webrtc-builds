@@ -48,7 +48,7 @@
 - Modify: `overlays/m150/common/api/cast_tuning/webrtc_cast_tuning_backend.cc`
 - Test: `overlays/m150/common/api/cast_tuning/cast_tuning_config_unittest.cc`
 
-- [ ] **Step 1: Write native tests for live apply and rollback**
+- [x] **Step 1: Write native tests for live apply and rollback**
 
 Extend `FakeBackend` with an encoder value and failure switch, then add these assertions before implementation:
 
@@ -84,7 +84,7 @@ Expect(backend.bitrate == 4000000 && backend.max_qp == 24,
        "encoder failure must roll back earlier live setters");
 ```
 
-- [ ] **Step 2: Run the native contract test and verify RED**
+- [x] **Step 2: Run the native contract test and verify RED**
 
 Run:
 
@@ -94,7 +94,7 @@ python3 -m unittest tests.test_cast_tuning_overlay.CastTuningNativeContractTests
 
 Expected: compilation fails because `CastTuningLivePatch::max_qp`, `BackendState::max_qp`, and `CastTuningBackend::ApplyEncoder` do not exist.
 
-- [ ] **Step 3: Implement the minimal common contract**
+- [x] **Step 3: Implement the minimal common contract**
 
 Add the public/state fields and backend operation:
 
@@ -118,7 +118,7 @@ back encoder, sender, and bitrate. `WebRtcCastTuningBackend` delegates only a
 changed value to a nullable `CastEncoderRuntimeAdapter`; changing max QP
 without an attached adapter returns `unsupported encoder runtime control`.
 
-- [ ] **Step 4: Run targeted and full native tests and verify GREEN**
+- [x] **Step 4: Run targeted and full native tests and verify GREEN**
 
 Run:
 
