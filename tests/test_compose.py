@@ -22,10 +22,9 @@ from builder.package import create_tar_gz, create_zip, package_filename
 def java8_jar_bytes() -> bytes:
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as stream:
-        stream.writestr(
-            "org/webrtc/Contract.class",
-            b"\xca\xfe\xba\xbe\x00\x00\x00\x34",
-        )
+        entry = zipfile.ZipInfo("org/webrtc/Contract.class")
+        entry.date_time = (1980, 1, 1, 0, 0, 0)
+        stream.writestr(entry, b"\xca\xfe\xba\xbe\x00\x00\x00\x34")
     return output.getvalue()
 
 
