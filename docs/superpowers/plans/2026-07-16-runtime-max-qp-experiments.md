@@ -619,10 +619,23 @@ git add docs/experiments docs/README.md docs/superpowers
 git commit -m "docs: report static max qp experiments"
 ```
 
-- [ ] **Step 6: Completion audit and repository handoff**
+- [x] **Step 6: Completion audit and repository handoff**
 
 Verify every requested cap has one real Android decoded image, actual QP,
 `view_image` assessment and report row. Record commits, branch/worktree state,
 artifact identity, review outcome and any remaining risk. Merge temporary
 branches back to their local main branches only after the evidence and diffs
 are clean, then remove temporary worktrees.
+
+Completed on 2026-07-16. Upstream was merged to `main` by merge commit
+`41bfaff`; downstream was transplanted onto the public `main` history without
+a force-push and published as `f1b02a4`. The corrected universal artifact is
+workflow run `29490786313` / SHA-256
+`81bbe6dd19c79998263125abafdcbac3d14b1fc279ee951c06fc638c305db382`.
+The final downstream report and four 1920×1080 Android images are tracked,
+while raw evidence remains under `artifacts/static-max-qp/20260716T100706Z`.
+Three review rounds completed and the final High was fixed and rerun. The
+remaining explicit limitation is that runtime VideoToolbox hardware evidence
+was collected on the accepted arm64 Mac; x64 was compile/package verified and
+is present in both canonical universal binary paths, but was not executed on
+physical x64 hardware.
