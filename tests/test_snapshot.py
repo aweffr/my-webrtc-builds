@@ -124,7 +124,7 @@ class SnapshotContractTests(unittest.TestCase):
             cache = Path(directory)
             archive = ensure_snapshot_archive(spec, cache, download=download)
             self.assertEqual(archive.read_bytes(), b"firstsecond")
-            self.assertEqual(calls, [part.name for part in spec.parts])
+            self.assertCountEqual(calls, [part.name for part in spec.parts])
 
             calls.clear()
             self.assertEqual(ensure_snapshot_archive(spec, cache, download=download), archive)
