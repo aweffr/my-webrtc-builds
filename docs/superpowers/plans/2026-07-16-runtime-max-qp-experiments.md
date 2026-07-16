@@ -363,7 +363,7 @@ Expected: GN/Ninja, package verification and checksums succeed. If local
 snapshot restore cannot complete, dispatch the existing macOS arm64 and x64
 GitHub Actions from the same pushed builder commit and download their artifacts.
 
-- [ ] **Step 5: Produce or obtain a universal XCFramework and run hardware evidence**
+- [x] **Step 5: Produce or obtain a universal XCFramework and run hardware evidence**
 
 Compose matching x64/arm64 packages with `python3 -m builder merge-macos`, or
 use the repository's workflow artifact when x64 is hosted-only. Then run:
@@ -376,6 +376,13 @@ EVIDENCE_DIR="$PWD/evidence/runtime-max-qp" \
 
 Expected: 32 → 24 → 32 applies on three encoder-session IDs without SDP
 renegotiation and every keyframe's actual QP is at most its requested cap.
+
+Completed with hosted arm64 run `29484647343`, x64 run `29484649765`, and
+corrected composition run `29490786313`. The universal zip SHA-256 is
+`81bbe6dd19c79998263125abafdcbac3d14b1fc279ee951c06fc638c305db382`;
+both canonical framework binary paths contain `x86_64 arm64`. The real
+Apple Silicon probe observed exact actual QP `32 → 24 → 32` on three
+distinct encoder sessions.
 
 - [x] **Step 6: Commit the hardware proof tooling**
 
@@ -590,13 +597,20 @@ git diff --check
 Expected: all commands pass, no credential or pairing code is retained, and
 every report image checksum matches the canonical experiment evidence.
 
-- [ ] **Step 4: Request a clean-context code review**
+- [x] **Step 4: Request a clean-context code review**
 
 Provide the reviewer with the user requirement, design, this plan, both diffs,
 build/E2E output, experiment JSON, report and known constraints. Limit review
 to requirement alignment and Critical/High correctness, concurrency,
 compatibility, observability and verification risks. Apply justified fixes and
 repeat at most three rounds.
+
+Three rounds completed. The final review found one High in screenshot/evidence
+correlation: historical matching `rtc_stats` could be selected after capture.
+The fix accepts only the latest stats record, requires a strictly newer
+post-screenshot sample, persists both record indices, and rejects any
+generation/session/QP/byte mismatch. The four real cases were rerun after the
+fix and retained record pairs `27→28`, `20→21`, `20→21`, and `20→21`.
 
 - [x] **Step 5: Commit documentation and measured evidence**
 

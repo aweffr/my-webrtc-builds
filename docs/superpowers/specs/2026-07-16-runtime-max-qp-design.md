@@ -86,7 +86,9 @@ The snapshot exposes:
 - request generation;
 - last VideoToolbox `OSStatus`;
 - active encoder-session ID;
-- latest encoded QP and the latest keyframe QP and byte size.
+- encoder-session ID on which the requested generation was applied;
+- latest encoded QP and the latest keyframe QP and byte size;
+- generation and encoder-session ID associated with the latest QP sample.
 
 Unsupported or failed QP control does not terminate the stream. It retains the
 last effective cap and emits explicit telemetry. A supported cap change may
@@ -204,20 +206,43 @@ but performs a controlled VideoToolbox compression-session replacement for
 each changed max-QP generation.
 
 The final local arm64 package was built from builder commit
-`fa0763d92694be52cda2ea0dc2bc2e1b4aedd357`. Its XCFramework zip SHA-256 is
-`264692ea18790940a1121ca4d2a0729722fbd604e3fc88f2812b1541a91a8044`.
-The real hardware probe produced three sessions for `32 → 24 → 32`, with
-effective and actual QP equal to each requested value. Hosted macOS arm64 run
-`29475664586` also completed successfully from the same commit.
+`807ed27450a27528c332969019450dc8819b35d5`. Its XCFramework zip SHA-256 is
+`9b551376bfbd056b70d8b75142efa697a049fcff9a27f6a2a4694a847b140ba4`.
+The real hardware probe produced three distinct sessions for `32 → 24 → 32`,
+with effective and actual QP exactly equal to each requested value. Hosted
+macOS arm64 run `29484647343` completed successfully from the same commit;
+hosted x64 run `29484649765` also completed successfully from that commit.
 
-The downstream reference app commit `a2c306e4dac27a9792a640b2920ed990a0f632cd`
+The first hosted composition exposed an existing framework-layout defect:
+the top-level binary was fat while `Versions/A/WebRTC` remained x64-only.
+Composer commit `505d58fe845592238fea03ff82ba5388caa05327` fixed the source
+of that inconsistency by writing the fat binary to the canonical versioned
+path and restoring the standard top-level symlink. Hosted composition run
+`29490786313` then produced the corrected universal XCFramework with SHA-256
+`81bbe6dd19c79998263125abafdcbac3d14b1fc279ee951c06fc638c305db382`.
+Both the top-level and `Versions/A` paths report `x86_64 arm64`, and the public
+header contains the applied-session and sample-generation/session evidence
+fields. A real Apple Silicon probe against that exact universal archive again
+produced three distinct sessions for `32 → 24 → 32`, with exact actual QP
+`32 → 24 → 32`.
+
+The downstream reference app commit `f90e985c8b0d4488fa2fb325192ee6a17f008176`
 then completed four independent Mac main-display to Android TV API 31 arm64
 emulator sessions through verified `relay/relay + UDP`. Requested, effective,
 and actual IDR QP were exactly `24/24/24`, `22/22/22`, `20/20/20`, and
-`18/18/18`. All four Android images were 1920×1080 and were inspected at
-original detail. The measured report recommends static Max QP 22 as the
-default engineering tradeoff while preserving motion Max QP 32; QP 20 remains
-an optional quality-biased setting and QP 18 is not the default.
+`18/18/18`. The automation accepted only the latest `rtc_stats`, captured the
+Android image, waited for a strictly newer metrics record, and required the
+same generation, applied/sample encoder-session IDs, QP, and encoded byte
+count across that window. The retained record pairs were `27→28`, `20→21`,
+`20→21`, and `20→21` respectively. Raw evidence is retained under
+`artifacts/static-max-qp/20260716T100706Z` in the screencast playground.
+
+All four Android images were 1920×1080 and were inspected at original detail.
+The measured report recommends static Max QP 22 as the default engineering
+tradeoff while preserving motion Max QP 32; QP 20 remains an optional
+quality-biased setting and QP 18 is not the default. VMAF is retained as a
+reference column only because capture and receive images are not strict
+frame-timestamp matches and the four screen contents are not identical.
 
 The repository's full unit suite, targeted native tests, macOS build/package
 verification, downstream build/tests, and E2E runner must pass before the
