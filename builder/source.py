@@ -139,15 +139,26 @@ def prepare_source(
     patch_paths = _validated_patch_paths(target, patch_dir)
     cache_dir = snapshot_cache_dir or workspace.root / "snapshot-cache"
     manifest = restore_source_snapshot(target.snapshot, workspace.root, cache_dir, journal=journal)
+    patch_environment = dict(os.environ)
+    # Snapshot worktrees intentionally contain no .git directory. CI workspaces can
+    # live below the builder repository, where an unconstrained `git apply` finds
+    # that parent repository and silently skips every snapshot-relative path.
+    patch_environment["GIT_CEILING_DIRECTORIES"] = str(workspace.checkout_root.resolve())
     for patch_path in patch_paths:
         runner.run(
             ["git", "apply", "--check", patch_path],
             cwd=workspace.src,
+            env=patch_environment,
         )
-        runner.run(["git", "apply", patch_path], cwd=workspace.src)
+        runner.run(
+            ["git", "apply", patch_path],
+            cwd=workspace.src,
+            env=patch_environment,
+        )
         runner.run(
             ["git", "apply", "--reverse", "--check", patch_path],
             cwd=workspace.src,
+            env=patch_environment,
         )
     if target.overlays:
         if overlay_dir is None:

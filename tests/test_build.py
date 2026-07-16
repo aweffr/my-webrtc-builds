@@ -1,9 +1,11 @@
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
 from builder.build import BuildError, _archive_objects, build_units, build_webrtc
+from builder.commands import CommandRunner
 from builder.config import DEPOT_TOOLS_COMMIT, SOURCE_VERSION, get_target
 from builder.source import (
     Workspace,
@@ -185,13 +187,52 @@ class SourcePreparationTests(unittest.TestCase):
                 self.assertLess(apply_index, reverse_check_index)
             self.assertTrue(
                 all(
-                    environment is None
+                    environment is not None
+                    and environment.get("GIT_CEILING_DIRECTORIES")
+                    == str(workspace.checkout_root.resolve())
                     for command, environment in runner.environments
                     if command[:2] == ("git", "apply")
                 )
             )
             for group in get_target("android").overlays:
                 self.assertTrue((workspace.src / group / "placeholder.h").is_file())
+
+    def test_patches_apply_when_snapshot_workspace_is_nested_in_builder_git_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            builder_repo = root / "builder"
+            builder_repo.mkdir()
+            CommandRunner(logger=lambda _: None).run(["git", "init", "-q"], cwd=builder_repo)
+            workspace = Workspace(builder_repo / "work")
+            patch_dir = builder_repo / "patches"
+            patch_dir.mkdir()
+            patch_path = patch_dir / "change.patch"
+            patch_path.write_text(
+                """\
+diff --git a/probe.txt b/probe.txt
+--- a/probe.txt
++++ b/probe.txt
+@@ -1 +1 @@
+-old
++new
+"""
+            )
+            target = replace(
+                get_target("ios"),
+                patches=(patch_path.name,),
+                overlays=(),
+            )
+
+            def restore(spec, workspace_root, cache_dir, journal=None):
+                workspace.src.mkdir(parents=True)
+                workspace.depot_tools.mkdir(parents=True)
+                (workspace.src / "probe.txt").write_text("old\n")
+                return {"snapshot": spec.name}
+
+            with patch("builder.source.restore_source_snapshot", side_effect=restore):
+                prepare_source(target, workspace, patch_dir, CommandRunner(logger=lambda _: None))
+
+            self.assertEqual((workspace.src / "probe.txt").read_text(), "new\n")
 
 
 class BuildPlanTests(unittest.TestCase):
