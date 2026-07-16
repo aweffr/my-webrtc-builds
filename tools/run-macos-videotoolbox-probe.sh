@@ -117,6 +117,15 @@ jq -e '
     .reported_expected_profile == .negotiated_profile and
     .reported_profile_mismatch == .profile_mismatch and
     .profile_mismatch == false)) and
+  ((.modes[] | select(.mode == "normal") | .runtime_qp) as $runtime_qp |
+    ($runtime_qp | map(.requested_max_qp)) == [32, 24, 32] and
+    (all($runtime_qp[]; .apply_state == "applied")) and
+    (all($runtime_qp[];
+      .effective_max_qp == .requested_max_qp and
+      .actual_qp >= 0 and
+      .actual_qp <= .requested_max_qp)) and
+    ([$runtime_qp[].encoder_session_id] | unique | length) == 3 and
+    ($runtime_qp[1].actual_qp <= 24)) and
   ((.modes[] | select(.mode == "low_latency") | .encoder_id) | contains(".rtvc"))
 ' "$evidence_path" >/dev/null
 

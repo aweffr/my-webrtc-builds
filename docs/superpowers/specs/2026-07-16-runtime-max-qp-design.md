@@ -3,7 +3,9 @@
 ## Goal
 
 Extend the pinned M150 macOS CastTuning API so a screen-casting sender can
-change VideoToolbox H.264 `MaxAllowedFrameQP` without recreating the encoder.
+change VideoToolbox H.264 `MaxAllowedFrameQP` without SDP renegotiation or
+recreating the WebRTC encoder object. The implementation may recreate the
+underlying VideoToolbox compression session when required by the hardware.
 Use that control to compare static-screen caps 24, 22, 20, and 18 in the real
 Mac sender to Android TV receiver path, preserving the received image and the
 actual encoded QP for every case in a reviewable Markdown report.
@@ -60,7 +62,11 @@ controller evidence object. A small runtime-control object will carry the
 requested QP cap and generation from the controller to encoders created by
 that factory. The H.264 encoder applies a changed generation immediately
 before encoding the next frame, reads the property back, and records the
-result. No standard RTP API or process-global registry is needed.
+result. On ordinary Apple H.264 hardware the encoder recreates only its
+VideoToolbox compression session first, because real-hardware experiments
+found that post-first-frame property writes are acknowledged but do not affect
+bitstream QP. No standard RTP API, SDP renegotiation, WebRTC encoder-object
+recreation, or process-global registry is needed.
 
 ## Public Contract
 
@@ -82,8 +88,10 @@ The snapshot exposes:
 - active encoder-session ID;
 - latest encoded QP and the latest keyframe QP and byte size.
 
-Unsupported or failed QP control does not terminate the stream or recreate
-the encoder. It retains the last effective cap and emits explicit telemetry.
+Unsupported or failed QP control does not terminate the stream. It retains the
+last effective cap and emits explicit telemetry. A supported cap change may
+replace the underlying VideoToolbox compression session and therefore changes
+the observable encoder-session ID.
 Other synchronous live-patch setters retain their existing rollback contract.
 
 ## Components and Data Flow
@@ -101,17 +109,20 @@ For a static transition:
    and publishes the requested QP and a new generation.
 3. The application requests an IDR through the existing controller API.
 4. Before its next `VTCompressionSessionEncodeFrame` call, the H.264 encoder
-   sees the new generation, checks property support, sets
-   `MaxAllowedFrameQP`, and reads the value back.
-5. The same frame is encoded with the new cap and the pending IDR request.
+   sees the new generation. If the active compression session has already
+   encoded a frame, it recreates that session, then checks property support,
+   sets `MaxAllowedFrameQP`, and reads the value back before the replacement
+   session's first frame.
+5. The same frame is encoded with the new cap as the replacement session's
+   initial IDR; no separate SDP or peer-connection operation occurs.
 6. The H.264 bitstream parser records the frame's actual slice QP. Telemetry
    correlates request generation, effective cap, actual QP, frame type,
    encoded byte count, and encoder-session ID.
 
 For motion recovery, the application applies 15 fps, 5 Mbps, and max QP 32
-before forwarding the resumed motion frame. A compression-session reset
-applies the latest requested cap during session configuration, so the control
-survives encoder recreation without creating one itself.
+before forwarding the resumed motion frame. The cap generation causes the
+same controlled compression-session replacement, so the first resumed frame
+is an IDR governed by the motion cap.
 
 ## Capability and Failure Handling
 
@@ -169,10 +180,28 @@ application, and failure behavior. Overlay contract tests first prove that
 the exact M150 hook patch exposes the runtime control and telemetry. The
 patched exact source must pass `git apply --check`.
 
-A macOS arm64 hardware probe proves that 32 to 24 to 32 changes are accepted
-without changing the encoder-session ID and that effective-value readback and
-actual bitstream QP are observable. The final framework then runs through the
+A macOS arm64 hardware probe proves that 32 to 24 to 32 changes are accepted,
+that each changed generation uses a new encoder-session ID, and that effective-
+value readback and actual bitstream QP are observable. The final framework then runs through the
 real screencast application and Android emulator for all four requested caps.
+
+## Execution Findings
+
+On 2026-07-16, a real Apple Silicon probe on `Mac17,8` / macOS 26.5.2 showed
+that the ordinary `com.apple.videotoolbox.videoencoder.ave.avc` encoder
+advertises `MaxAllowedFrameQP` as read/write and returns successful set and
+readback results after encoding starts, but a `32 → 24` update left the next
+IDR at actual slice QP 32. A reverse probe starting the session at 24 produced
+actual IDR QP 24, confirming both the parser and the property itself; the
+hardware only honored the cap established before that session's first frame.
+
+The Apple low-latency `com.apple.videotoolbox.videoencoder.h264.rtvc` encoder
+did not advertise `MaxAllowedFrameQP` on this host. It advertised
+`SupportsBaseFrameQP`, but Apple documents that `BaseFrameQP` disables standard
+rate control and ignores average bitrate/data-rate limits. That path remains
+out of scope. The selected implementation therefore keeps the stable live API
+but performs a controlled VideoToolbox compression-session replacement for
+each changed max-QP generation.
 
 The repository's full unit suite, targeted native tests, macOS build/package
 verification, downstream build/tests, and E2E runner must pass before the

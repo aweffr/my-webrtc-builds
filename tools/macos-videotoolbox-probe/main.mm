@@ -97,10 +97,46 @@ NSDictionary<NSString *, id> *RunMode(BOOL lowLatency) {
 
   __block NSMutableDictionary<NSString *, id> *encoderEvidence =
       [NSMutableDictionary dictionary];
+  __block NSDictionary<NSString *, id> *runtimeRequest = @{
+    @"generation" : @1,
+    @"requested_max_qp" : @32,
+  };
+  __block NSMutableDictionary<NSNumber *, NSMutableDictionary<NSString *, id> *>
+      *runtimeEvidence = [NSMutableDictionary dictionary];
+  NSObject *runtimeLock = [[NSObject alloc] init];
   void (^evidenceHandler)(NSDictionary<NSString *, id> *) =
       ^(NSDictionary<NSString *, id> *event) {
         @synchronized(encoderEvidence) {
           [encoderEvidence addEntriesFromDictionary:event];
+        }
+      };
+  NSDictionary<NSString *, id> *(^runtimeProvider)(void) =
+      ^NSDictionary<NSString *, id> * {
+        @synchronized(runtimeLock) {
+          return [runtimeRequest copy];
+        }
+      };
+  void (^runtimeResultHandler)(NSDictionary<NSString *, id> *) =
+      ^(NSDictionary<NSString *, id> *event) {
+        NSNumber *generation = event[@"generation"];
+        if (![generation isKindOfClass:[NSNumber class]])
+          return;
+        @synchronized(runtimeLock) {
+          NSMutableDictionary<NSString *, id> *record =
+              runtimeEvidence[generation];
+          if (!record) {
+            record = [NSMutableDictionary dictionary];
+            runtimeEvidence[generation] = record;
+          }
+          [record addEntriesFromDictionary:event];
+          NSString *eventType = event[@"event_type"];
+          if ([eventType isEqualToString:@"encoder_runtime_qp_applied"])
+            record[@"apply_state"] = @"applied";
+          else if ([eventType
+                       isEqualToString:@"encoder_runtime_qp_unsupported"])
+            record[@"apply_state"] = @"unsupported";
+          else if ([eventType isEqualToString:@"encoder_runtime_qp_failed"])
+            record[@"apply_state"] = @"failed";
         }
       };
   NSDictionary<NSString *, id> *options = @{
@@ -110,6 +146,8 @@ NSDictionary<NSString *, id> *RunMode(BOOL lowLatency) {
     @"video_toolbox_low_latency_rate_control" : @(lowLatency),
     @"config_hash" : [NSString stringWithFormat:@"probe-%@", mode],
     @"encoder_evidence_handler" : [evidenceHandler copy],
+    @"encoder_runtime_qp_provider" : [runtimeProvider copy],
+    @"encoder_runtime_qp_result_handler" : [runtimeResultHandler copy],
   };
   RTCVideoEncoderH264 *encoder =
       [[RTCVideoEncoderH264 alloc] initWithCodecInfo:codec
@@ -117,8 +155,9 @@ NSDictionary<NSString *, id> *RunMode(BOOL lowLatency) {
   dispatch_semaphore_t encodedSemaphore = dispatch_semaphore_create(0);
   __block NSData *encoded = nil;
   [encoder setCallback:^BOOL(RTCEncodedImage *image, id info) {
-    if (image.frameType == RTCFrameTypeVideoFrameKey && !encoded) {
-      encoded = [image.buffer copy];
+    if (image.frameType == RTCFrameTypeVideoFrameKey) {
+      if (!encoded)
+        encoded = [image.buffer copy];
       dispatch_semaphore_signal(encodedSemaphore);
     }
     return YES;
@@ -147,33 +186,57 @@ NSDictionary<NSString *, id> *RunMode(BOOL lowLatency) {
     };
   }
 
-  CVPixelBufferRef pixelBuffer = CreateFrameBuffer();
-  if (!pixelBuffer) {
-    [encoder releaseEncoder];
-    return @{
-      @"mode" : mode,
-      @"requested_low_latency" : @(lowLatency),
-      @"session_status" : @"pixel_buffer_failed",
-    };
-  }
-  RTCCVPixelBuffer *buffer =
-      [[RTCCVPixelBuffer alloc] initWithPixelBuffer:pixelBuffer];
-  RTCVideoFrame *frame = [[RTCVideoFrame alloc]
-      initWithBuffer:buffer
-            rotation:RTCVideoRotation_0
-         timeStampNs:1'000'000];
-  frame.timeStamp = 90;
-  const NSInteger encodeStatus =
-      [encoder encode:frame
-          codecSpecificInfo:nil
-                 frameTypes:@[ @(RTCFrameTypeVideoFrameKey) ]];
-  CVPixelBufferRelease(pixelBuffer);
+  NSArray<NSNumber *> *requestedQps = @[ @32, @24, @32 ];
+  NSMutableArray<NSDictionary<NSString *, id> *> *runtimeQp =
+      [NSMutableArray arrayWithCapacity:requestedQps.count];
+  NSInteger encodeStatus = 0;
+  long waitStatus = 0;
+  for (NSUInteger index = 0; index < requestedQps.count; ++index) {
+    NSNumber *generation = @(index + 1);
+    NSNumber *requestedMaxQp = requestedQps[index];
+    @synchronized(runtimeLock) {
+      runtimeRequest = @{
+        @"generation" : generation,
+        @"requested_max_qp" : requestedMaxQp,
+      };
+    }
 
-  const long waitStatus = dispatch_semaphore_wait(
-      encodedSemaphore,
-      dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC));
+    CVPixelBufferRef pixelBuffer = CreateFrameBuffer();
+    if (!pixelBuffer) {
+      encodeStatus = -1;
+      break;
+    }
+    RTCCVPixelBuffer *buffer =
+        [[RTCCVPixelBuffer alloc] initWithPixelBuffer:pixelBuffer];
+    RTCVideoFrame *frame = [[RTCVideoFrame alloc]
+        initWithBuffer:buffer
+              rotation:RTCVideoRotation_0
+           timeStampNs:static_cast<int64_t>(index + 1) * 1'000'000];
+    frame.timeStamp = static_cast<uint32_t>((index + 1) * 90);
+    encodeStatus = [encoder
+        encode:frame
+        codecSpecificInfo:nil
+        frameTypes:@[ @(RTCFrameTypeVideoFrameKey) ]];
+    CVPixelBufferRelease(pixelBuffer);
+    if (encodeStatus != 0)
+      break;
+    waitStatus = dispatch_semaphore_wait(
+        encodedSemaphore,
+        dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC));
+    if (waitStatus != 0)
+      break;
+
+    @synchronized(runtimeLock) {
+      NSMutableDictionary<NSString *, id> *record =
+          [runtimeEvidence[generation] mutableCopy] ?: [NSMutableDictionary dictionary];
+      record[@"generation"] = generation;
+      record[@"requested_max_qp"] = requestedMaxQp;
+      [runtimeQp addObject:record];
+    }
+  }
   [encoder releaseEncoder];
-  if (encodeStatus != 0 || waitStatus != 0 || !encoded) {
+  if (encodeStatus != 0 || waitStatus != 0 || !encoded ||
+      runtimeQp.count != requestedQps.count) {
     return @{
       @"mode" : mode,
       @"requested_low_latency" : @(lowLatency),
@@ -193,6 +256,7 @@ NSDictionary<NSString *, id> *RunMode(BOOL lowLatency) {
     @"sps_profile" : actualProfile,
     @"profile_mismatch" : @(mismatch),
     @"encoded_bytes" : @(encoded.length),
+    @"runtime_qp" : runtimeQp,
   } mutableCopy];
   @synchronized(encoderEvidence) {
     result[@"encoder_id"] = encoderEvidence[@"encoder_id"] ?: @"UNKNOWN";

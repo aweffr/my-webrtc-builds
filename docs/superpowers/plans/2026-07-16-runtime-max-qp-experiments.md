@@ -4,7 +4,7 @@
 
 **Goal:** Add live VideoToolbox H.264 max-QP control to the M150 macOS SDK and produce a real Mac-to-Android-TV comparison report for static caps 24, 22, 20, and 18.
 
-**Architecture:** Extend the existing transactional CastTuning live-patch model with `max_qp`, then bridge it to one per-factory Objective-C runtime state captured by the configured H.264 encoder. The encoder applies a changed generation immediately before its next `VTCompressionSessionEncodeFrame`, reads back the effective property, and reports actual parsed frame QP and encoded size through the existing evidence channel. The downstream reference sender supplies the desired static cap, and a focused TURN/UDP runner retains one decoded Android PNG plus correlated QP evidence for each requested value.
+**Architecture:** Extend the existing transactional CastTuning live-patch model with `max_qp`, then bridge it to one per-factory Objective-C runtime state captured by the configured H.264 encoder. The encoder replaces only its VideoToolbox compression session when the generation changes, applies the cap before that session's first `VTCompressionSessionEncodeFrame`, reads back the effective property, and reports actual parsed frame QP and encoded size through the existing evidence channel. The downstream reference sender supplies the desired static cap, and a focused TURN/UDP runner retains one decoded Android PNG plus correlated QP evidence for each requested value.
 
 **Tech Stack:** C++17, Objective-C++, Apple VideoToolbox, WebRTC M150, Python `unittest`, Swift/XCTest, zsh, Android TV API 31 arm64 emulator, ADB, jq, GitHub Actions/macOS packaging.
 
@@ -267,7 +267,9 @@ Expected: failure because the current patch has only session-start max QP.
 
 In `RTCVideoEncoderH264.mm`, add `_lastAppliedMaxQpGeneration`. Before the
 first pixel-buffer operation in `encode:codecSpecificInfo:frameTypes:`, read
-the provider. When its generation changed:
+the provider. When its generation changed after the current VideoToolbox
+session has encoded a frame, replace that compression session so the new cap
+is established before the replacement session's first frame:
 
 ```objc
 NSDictionary *(^provider)(void) =
@@ -288,9 +290,10 @@ After the bitstream parser assigns `frame.qp`, emit
 `encoder_qp_sample` for keyframes, including actual QP, keyframe flag and
 encoded bytes. The reference sender forces a keyframe immediately after each
 static policy transition, so this provides the required generation-bound
-experiment evidence without per-frame telemetry. Reset
-the locally applied generation when a compression session is destroyed, and
-apply the current requested value while configuring the replacement session.
+experiment evidence without per-frame telemetry. Reset the locally applied
+generation when a compression session is destroyed, apply the current
+requested value before the replacement session's first frame, and report the
+new encoder-session ID with the forced initial IDR.
 
 - [x] **Step 4: Verify patch applicability and all tests GREEN**
 
@@ -320,25 +323,25 @@ git commit -m "feat: apply max qp on videotoolbox frame boundaries"
 - Modify: `tests/test_verify.py` if the public-symbol contract changes
 - Generated ignored evidence: `evidence/macos-videotoolbox/<sha256>/`
 
-- [ ] **Step 1: Extend the hardware probe contract before implementation**
+- [x] **Step 1: Extend the hardware probe contract before implementation**
 
-Add probe output assertions requiring one unchanged encoder-session ID and the
-runtime sequence 32, 24, and 32:
+Add probe output assertions requiring three distinct encoder-session IDs and
+the runtime sequence 32, 24, and 32:
 
 ```jq
 (.runtime_qp | map(.requested_max_qp)) == [32,24,32] and
 (all(.runtime_qp[]; .apply_state == "applied")) and
 (all(.runtime_qp[]; .effective_max_qp == .requested_max_qp)) and
-([.runtime_qp[].encoder_session_id] | unique | length) == 1 and
+([.runtime_qp[].encoder_session_id] | unique | length) == 3 and
 (.runtime_qp[1].actual_qp <= 24)
 ```
 
-- [ ] **Step 2: Run the probe contract test and verify RED**
+- [x] **Step 2: Run the probe contract test and verify RED**
 
 Run the existing relevant unit/contract test or compile the probe against the
 current artifact. Expected: runtime-QP fields are missing.
 
-- [ ] **Step 3: Extend the hardware probe implementation**
+- [x] **Step 3: Extend the hardware probe implementation**
 
 Supply runtime provider/result blocks, encode three distinct forced keyframes,
 and record requested/effective/actual QP, bytes, generation and session ID for
@@ -371,8 +374,8 @@ EVIDENCE_DIR="$PWD/evidence/runtime-max-qp" \
   .local-dist/runtime-max-qp/WebRTC-m150-macos-universal.xcframework.zip
 ```
 
-Expected: 32 → 24 → 32 applies on one encoder-session ID and the 24-capped
-keyframe's actual QP is at most 24.
+Expected: 32 → 24 → 32 applies on three encoder-session IDs without SDP
+renegotiation and every keyframe's actual QP is at most its requested cap.
 
 - [ ] **Step 6: Commit the hardware proof tooling**
 

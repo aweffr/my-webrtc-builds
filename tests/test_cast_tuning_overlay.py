@@ -42,6 +42,8 @@ class CastTuningNativeContractTests(unittest.TestCase):
         self.assertIn("encoder_runtime_qp_result_handler", transformed)
         self.assertIn("encoder_runtime_qp_applied", transformed)
         self.assertIn("encoder_qp_sample", transformed)
+        self.assertIn("resetCompressionSessionForRuntimeMaxQpIfNeeded", transformed)
+        self.assertIn("encoderSessionId:encodeParams->encoder_session_id", transformed)
 
     def test_native_contract_tests_use_platform_neutral_paths(self) -> None:
         platform_absolute_path = re.compile(r'"(?:/|[A-Za-z]:[\\/]|\\\\)')
