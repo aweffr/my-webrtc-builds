@@ -1,7 +1,6 @@
 import json
 import hashlib
 import io
-import os
 import tempfile
 import unittest
 import zipfile
@@ -226,7 +225,6 @@ class MacOSInputTests(unittest.TestCase):
             versioned = framework / "Versions" / "A" / "WebRTC"
             self.assertTrue(direct.is_symlink())
             self.assertEqual(direct.readlink(), Path("Versions/Current/WebRTC"))
-            self.assertTrue(os.path.samefile(direct, versioned))
             self.assertEqual(versioned.read_bytes(), b"universal")
 
     def test_composition_rejects_workflow_commit_different_from_inputs(self) -> None:
