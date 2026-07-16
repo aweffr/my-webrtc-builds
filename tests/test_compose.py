@@ -45,6 +45,7 @@ def create_package(
     target: str,
     metadata: BuildMetadata | None = None,
     framework_header: str = "header",
+    duplicate_direct_framework_binary: bool = False,
 ) -> Path:
     root = directory / f"stage-{target}" / "webrtc"
     root.mkdir(parents=True)
@@ -57,6 +58,10 @@ def create_package(
         framework = root / "Frameworks" / "WebRTC.framework" / "Versions" / "A"
         framework.mkdir(parents=True)
         (framework / "WebRTC").write_bytes(target.encode())
+        if duplicate_direct_framework_binary:
+            (framework.parent.parent / "WebRTC").write_bytes(
+                f"direct-{target}".encode()
+            )
         (framework / "Headers").mkdir()
         (framework / "Headers" / "WebRTC.h").write_text(framework_header)
     elif target == "android":
@@ -179,6 +184,48 @@ class MacOSInputTests(unittest.TestCase):
             self.assertEqual(payload["schema_version"], 2)
             self.assertEqual(payload["target"], "macos-universal")
             self.assertEqual(set(payload["input_snapshots"]), {"macos-x64", "macos-arm64"})
+
+    def test_composition_canonicalizes_duplicate_versioned_framework_binary(self) -> None:
+        class ComposeRunner:
+            def run(self, argv, *, cwd=None, env=None) -> None:
+                command = tuple(map(str, argv))
+                if command[0] == "lipo":
+                    output = Path(command[command.index("-output") + 1])
+                    output.write_bytes(b"universal")
+                elif command[0] == "xcodebuild":
+                    output = Path(command[command.index("-output") + 1])
+                    output.mkdir(parents=True)
+                    (output / "Info.plist").write_text("plist")
+                elif command[0] == "zip":
+                    Path(command[3]).write_bytes(b"zip")
+
+            def capture(self, argv, *, cwd=None, env=None) -> str:
+                return "x86_64 arm64"
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            compose_macos_xcframework(
+                x64_archive=create_package(
+                    root,
+                    "macos-x64",
+                    duplicate_direct_framework_binary=True,
+                ),
+                arm64_archive=create_package(
+                    root,
+                    "macos-arm64",
+                    duplicate_direct_framework_binary=True,
+                ),
+                work_dir=root / "work",
+                output_dir=root / "dist",
+                builder_commit="a" * 40,
+                runner=ComposeRunner(),
+            )
+            framework = root / "work" / "universal" / "WebRTC.framework"
+            direct = framework / "WebRTC"
+            versioned = framework / "Versions" / "A" / "WebRTC"
+            self.assertTrue(direct.is_symlink())
+            self.assertEqual(direct.resolve(), versioned.resolve())
+            self.assertEqual(versioned.read_bytes(), b"universal")
 
     def test_composition_rejects_workflow_commit_different_from_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

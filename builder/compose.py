@@ -75,12 +75,36 @@ def _framework(root: Path) -> Path:
 
 def _framework_binary(framework: Path) -> Path:
     direct = framework / "WebRTC"
-    if direct.exists() or direct.is_symlink():
+    if direct.is_symlink():
+        return direct.resolve()
+    if direct.exists():
         return direct
     versioned = framework / "Versions" / "A" / "WebRTC"
     if versioned.exists():
         return versioned
     raise CompositionError(f"framework binary is missing from {framework}")
+
+
+def _canonicalize_versioned_framework_binary(
+    framework: Path,
+    universal_binary: Path,
+) -> Path:
+    versioned = framework / "Versions" / "A" / "WebRTC"
+    if not versioned.parent.is_dir():
+        return universal_binary
+
+    if universal_binary != versioned:
+        shutil.copy2(universal_binary, versioned)
+
+    current = framework / "Versions" / "Current"
+    if not current.exists() and not current.is_symlink():
+        current.symlink_to("A")
+
+    direct = framework / "WebRTC"
+    if direct.exists() or direct.is_symlink():
+        direct.unlink()
+    direct.symlink_to("Versions/Current/WebRTC")
+    return versioned
 
 
 def _framework_headers(framework: Path) -> Path:
@@ -127,6 +151,10 @@ def compose_macos_xcframework(
             "-output",
             universal_binary,
         ]
+    )
+    universal_binary = _canonicalize_versioned_framework_binary(
+        universal_framework,
+        universal_binary,
     )
     architectures = set(runner.capture(["lipo", "-archs", universal_binary]).split())
     if architectures != {"x86_64", "arm64"}:
