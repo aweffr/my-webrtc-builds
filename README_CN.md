@@ -18,6 +18,11 @@ WebRTC CastKit 是面向低延迟办公投屏的 WebRTC 运行时与可复现构
 `1f975dfd761af6e5d76d28333191973b258d82a8`。构建时不接受任意 WebRTC
 版本输入。
 
+各平台构建只从 `aweffr/webrtc-source-snapshots` 恢复按 target 固定的源码快照；
+应用本仓库 patch/overlay 前会校验 manifest、每个 release asset part 和重组后的
+archive。构建不会运行 `fetch`、`gclient sync`、hooks，也不会回退 Google 源码；
+snapshot 内固定的 `depot_tools` 仅提供 GN/Ninja。
+
 ## 如何使用 CastTuning
 
 从 [`examples/cast-tuning-detail-idle.json`](examples/cast-tuning-detail-idle.json) 开始。有效配置的优先级固定为：
@@ -82,7 +87,7 @@ live patch 会整体预校验。setter 失败时，CastTuning 会回滚旧值；
 | Windows x64 | `webrtc-m150-windows-x64.zip` | x64 `webrtc.lib`、C++ headers、CastTuning common C++ API、`/MT` Release ABI |
 | macOS universal | `WebRTC-m150-macos-universal.xcframework.zip` | universal `WebRTC.xcframework` |
 
-静态包都包含 resolved GN arguments、metadata schema `2`、patch/overlay hash、上游 license/notice 和 `SHA256SUMS`。
+静态包都包含 resolved GN arguments、metadata schema `3`、固定 snapshot provenance、patch/overlay hash、上游 license/notice 和 `SHA256SUMS`。
 
 ## 构建与发布运维
 

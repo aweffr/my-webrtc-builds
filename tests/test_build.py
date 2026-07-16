@@ -1,11 +1,11 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from builder.build import BuildError, _archive_objects, build_units, build_webrtc
-from builder.config import SOURCE_VERSION, get_target
+from builder.config import DEPOT_TOOLS_COMMIT, SOURCE_VERSION, get_target
 from builder.source import (
-    DEPOT_TOOLS_COMMIT,
     Workspace,
     apply_overlays,
     overlay_manifest,
@@ -62,51 +62,32 @@ class FakeRunner:
 
 
 class SourcePreparationTests(unittest.TestCase):
-    def test_depot_tools_cannot_self_update_after_explicit_bootstrap(self) -> None:
+    def test_depot_tools_cannot_self_update_after_snapshot_restore(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             environment = Workspace(Path(directory)).environment()
         self.assertEqual(environment.get("DEPOT_TOOLS_UPDATE"), "0")
 
-    def test_windows_environment_uses_bat_tools_and_long_paths_without_bash_bootstrap(self) -> None:
+    def test_windows_environment_uses_snapshot_gn_ninja_and_long_paths(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             workspace = Workspace(Path(directory))
             target = get_target("windows-x64")
             environment = workspace.environment(target)
-            tool = workspace.tool("fetch", target)
-        self.assertTrue(str(tool).endswith("fetch.bat"))
+            gn = workspace.tool("gn", target)
+            ninja = workspace.tool("ninja", target)
+        self.assertTrue(str(gn).endswith("gn.bat"))
+        self.assertTrue(str(ninja).endswith("ninja.bat"))
         self.assertIn("DEPOT_TOOLS_WIN_TOOLCHAIN", environment)
         self.assertEqual(environment["DEPOT_TOOLS_WIN_TOOLCHAIN"], "0")
         self.assertEqual(environment["GIT_CONFIG_KEY_0"], "core.longpaths")
         self.assertEqual(environment["GIT_CONFIG_VALUE_0"], "true")
         self.assertIn(";", environment["PATH"])
 
-    def test_windows_bootstraps_git_wrappers_before_fetch(self) -> None:
+    def test_source_acquisition_tools_are_not_available_to_builds(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            workspace = Workspace(root)
-            target = get_target("windows-x64")
-            workspace.depot_tools.mkdir(parents=True)
-            patch_dir = root / "patches"
-            patch_dir.mkdir()
-            write_valid_patches(patch_dir, target.patches)
-            overlay_dir = root / "overlays"
-            overlay = overlay_dir / "common" / "placeholder.h"
-            overlay.parent.mkdir(parents=True)
-            overlay.write_text("common")
-
-            runner = FakeRunner()
-            prepare_source(target, workspace, patch_dir, runner, overlay_dir)
-
-            commands = [call[1] for call in runner.calls]
-            bootstrap_index = next(
-                i
-                for i, command in enumerate(commands)
-                if command[0].endswith("win_tools.bat")
-            )
-            fetch_index = next(
-                i for i, command in enumerate(commands) if command[0].endswith("fetch.bat")
-            )
-            self.assertLess(bootstrap_index, fetch_index)
+            workspace = Workspace(Path(directory))
+            for name in ("fetch", "gclient", "bootstrap_python3"):
+                with self.subTest(name=name), self.assertRaisesRegex(BuildError, "not permitted"):
+                    workspace.tool(name, get_target("android"))
 
     def test_malformed_patch_is_rejected_before_source_checkout(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -115,9 +96,7 @@ class SourcePreparationTests(unittest.TestCase):
             patch_dir = root / "patches"
             patch_dir.mkdir()
             write_valid_patches(patch_dir, target.patches)
-            (patch_dir / target.patches[0]).write_text(
-                "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@\n"
-            )
+            (patch_dir / target.patches[0]).write_text("diff --git a/a b/a\n--- a/a\n+++ b/a\n@@\n")
 
             runner = FakeRunner()
             with self.assertRaisesRegex(BuildError, "invalid unified diff hunk header"):
@@ -152,12 +131,10 @@ class SourcePreparationTests(unittest.TestCase):
             with self.assertRaisesRegex(BuildError, "overlay destination already exists"):
                 apply_overlays(get_target("android"), workspace, overlay)
 
-    def test_source_is_pinned_and_patches_are_checked_before_application(self) -> None:
+    def test_snapshot_is_restored_before_patches_and_overlays_are_applied(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             workspace = Workspace(root)
-            workspace.src.mkdir(parents=True)
-            workspace.depot_tools.mkdir(parents=True)
             patch_dir = root / "patches"
             patch_dir.mkdir()
             write_valid_patches(patch_dir, get_target("android").patches)
@@ -168,47 +145,33 @@ class SourcePreparationTests(unittest.TestCase):
                 source.write_text(group)
             runner = FakeRunner()
 
-            prepare_source(
-                get_target("android"), workspace, patch_dir, runner, overlay_dir
-            )
+            def restore(spec, workspace_root, cache_dir, journal=None):
+                self.assertEqual(spec, get_target("android").snapshot)
+                self.assertEqual(cache_dir, root / "cache")
+                workspace.src.mkdir(parents=True)
+                workspace.depot_tools.mkdir(parents=True)
+                return {"snapshot": spec.name}
+
+            with patch("builder.source.restore_source_snapshot", side_effect=restore) as restored:
+                manifest = prepare_source(
+                    get_target("android"),
+                    workspace,
+                    patch_dir,
+                    runner,
+                    overlay_dir,
+                    snapshot_cache_dir=root / "cache",
+                )
 
             commands = [call[1] for call in runner.calls]
-            checkout = ("git", "checkout", "--detach", SOURCE_VERSION.commit)
-            self.assertIn(checkout, commands)
-            sync_index = next(
-                i for i, command in enumerate(commands) if command[:2] == ("gclient", "sync")
-            )
+            self.assertEqual(manifest["snapshot"], "webrtc-src-m150-android")
+            restored.assert_called_once()
             for patch_name in get_target("android").patches:
                 patch_path = str(patch_dir / patch_name)
                 check_index = commands.index(("git", "apply", "--check", patch_path))
                 apply_index = commands.index(("git", "apply", patch_path))
-                self.assertGreater(check_index, sync_index)
                 self.assertLess(check_index, apply_index)
             for group in get_target("android").overlays:
                 self.assertTrue((workspace.src / group / "placeholder.h").is_file())
-
-    def test_unexpected_checkout_commit_is_rejected(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            workspace = Workspace(root)
-            workspace.src.mkdir(parents=True)
-            workspace.depot_tools.mkdir(parents=True)
-            patch_dir = root / "patches"
-            patch_dir.mkdir()
-            write_valid_patches(patch_dir, get_target("android").patches)
-            overlay_dir = root / "overlays"
-            for group in get_target("android").overlays:
-                source = overlay_dir / group / group / "placeholder.h"
-                source.parent.mkdir(parents=True)
-                source.write_text(group)
-            with self.assertRaisesRegex(BuildError, "unexpected WebRTC commit"):
-                prepare_source(
-                    get_target("android"),
-                    workspace,
-                    patch_dir,
-                    FakeRunner(commit="b" * 40),
-                    overlay_dir,
-                )
 
 
 class BuildPlanTests(unittest.TestCase):
@@ -223,11 +186,16 @@ class BuildPlanTests(unittest.TestCase):
 
             def capture(self, argv, *, cwd=None, env=None) -> str:
                 self.calls.append(("capture", tuple(map(str, argv)), cwd))
-                if argv and str(argv[0]).endswith("gn.bat") and tuple(argv[1:3]) == (
-                    "args",
-                    "--list",
+                if (
+                    argv
+                    and str(argv[0]).endswith("gn.bat")
+                    and tuple(argv[1:3])
+                    == (
+                        "args",
+                        "--list",
+                    )
                 ):
-                    return "target_os = \"win\""
+                    return 'target_os = "win"'
                 return super().capture(argv, cwd=cwd, env=env)
 
         with tempfile.TemporaryDirectory() as directory:
@@ -314,18 +282,10 @@ class BuildPlanTests(unittest.TestCase):
         validation_index = next(
             i
             for i, command in enumerate(commands)
-            if command[0] == "ninja"
-            and "api/cast_tuning:cast_tuning_native_tests" in command
+            if command[0] == "ninja" and "api/cast_tuning:cast_tuning_native_tests" in command
         )
         execute_index = commands.index(
-            (
-                str(
-                    workspace.out
-                    / "macos-arm64"
-                    / "arm64"
-                    / "cast_tuning_native_tests"
-                ),
-            )
+            (str(workspace.out / "macos-arm64" / "arm64" / "cast_tuning_native_tests"),)
         )
         self.assertLess(archive_index, validation_index)
         self.assertLess(validation_index, execute_index)

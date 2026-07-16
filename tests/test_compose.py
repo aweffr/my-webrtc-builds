@@ -15,7 +15,7 @@ from builder.compose import (
     prepare_macos_inputs,
 )
 from builder.config import get_target
-from builder.metadata import BuildMetadata, save_metadata
+from builder.metadata import BuildMetadata, save_metadata, snapshot_provenance
 from builder.package import create_tar_gz, create_zip, package_filename
 
 
@@ -83,27 +83,28 @@ def create_android_aar(directory: Path) -> Path:
     with zipfile.ZipFile(aar, "w") as stream:
         stream.writestr("AndroidManifest.xml", "<manifest />")
         stream.writestr("classes.jar", java8_jar_bytes())
-        stream.writestr(
-            "jni/arm64-v8a/libjingle_peerconnection_so.so", b"android-jni"
-        )
+        stream.writestr("jni/arm64-v8a/libjingle_peerconnection_so.so", b"android-jni")
     return aar
 
 
 def create_xcframework_inputs(directory: Path) -> tuple[Path, Path]:
     xcframework = directory / "WebRTC-m150-macos-universal.xcframework.zip"
-    xcframework.write_bytes(b"xcframework")
     metadata = directory / "xcframework-metadata.json"
-    metadata.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "target": "macos-universal",
-                "builder_commit": "a" * 40,
-                "source": build_metadata("macos-x64").source,
-                "header_manifest": "same-headers",
-            }
-        )
-    )
+    payload = {
+        "schema_version": 2,
+        "target": "macos-universal",
+        "builder_commit": "a" * 40,
+        "source": build_metadata("macos-x64").source,
+        "header_manifest": "same-headers",
+        "input_snapshots": {
+            target: snapshot_provenance(get_target(target))
+            for target in ("macos-x64", "macos-arm64")
+        },
+    }
+    metadata.write_text(json.dumps(payload))
+    with zipfile.ZipFile(xcframework, "w") as stream:
+        stream.writestr("WebRTC.xcframework/metadata.json", json.dumps(payload))
+        stream.writestr("WebRTC.xcframework/Info.plist", "plist")
     return xcframework, metadata
 
 
@@ -175,7 +176,10 @@ class MacOSInputTests(unittest.TestCase):
             )
             self.assertLess(lipo_index, xcode_index)
             self.assertTrue(archive.is_file())
-            self.assertEqual(json.loads(metadata.read_text())["target"], "macos-universal")
+            payload = json.loads(metadata.read_text())
+            self.assertEqual(payload["schema_version"], 2)
+            self.assertEqual(payload["target"], "macos-universal")
+            self.assertEqual(set(payload["input_snapshots"]), {"macos-x64", "macos-arm64"})
 
     def test_composition_rejects_workflow_commit_different_from_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -229,20 +233,7 @@ class ReleaseManifestTests(unittest.TestCase):
                     "windows-x64",
                 )
             }
-            xcframework = root / "WebRTC-m150-macos-universal.xcframework.zip"
-            xcframework.write_bytes(b"xcframework")
-            xc_metadata = root / "xcframework-metadata.json"
-            xc_metadata.write_text(
-                json.dumps(
-                    {
-                        "schema_version": 1,
-                        "target": "macos-universal",
-                        "builder_commit": "a" * 40,
-                        "source": build_metadata("macos-x64").source,
-                        "header_manifest": "same-headers",
-                    }
-                )
-            )
+            xcframework, xc_metadata = create_xcframework_inputs(root)
             manifest = create_release_manifest(
                 packages=packages,
                 android_aar=create_android_aar(root),
@@ -255,6 +246,8 @@ class ReleaseManifestTests(unittest.TestCase):
             )
             payload = json.loads(manifest.read_text())
         self.assertEqual(payload["tag"], "webrtc-m150.7871.3-aaaaaaa-20260712-all")
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(set(payload["snapshots"]), set(packages))
         self.assertEqual(len(payload["assets"]), 7)
         self.assertIn(
             "webrtc-m150-android-arm64-v8a.aar",
@@ -274,21 +267,7 @@ class ReleaseManifestTests(unittest.TestCase):
                     "windows-x64",
                 )
             }
-            xcframework = root / "WebRTC-m150-macos-universal.xcframework.zip"
-            xcframework.write_bytes(b"xcframework")
-            xc_metadata = root / "xcframework-metadata.json"
-            xc_metadata.write_text(
-                json.dumps(
-                    {
-                        "schema_version": 1,
-                        "target": "macos-universal",
-                        "builder_commit": "a" * 40,
-                        "artifact_digest": "sha256:" + "b" * 64,
-                        "source": build_metadata("macos-x64").source,
-                        "header_manifest": "same-headers",
-                    }
-                )
-            )
+            xcframework, xc_metadata = create_xcframework_inputs(root)
             with self.assertRaisesRegex(CompositionError, "workflow builder commit"):
                 create_release_manifest(
                     packages=packages,
@@ -297,6 +276,36 @@ class ReleaseManifestTests(unittest.TestCase):
                     xcframework_metadata=xc_metadata,
                     output_dir=root / "release",
                     builder_commit="b" * 40,
+                    release_date="20260712",
+                    platform="all",
+                )
+
+    def test_release_rejects_xcframework_with_different_embedded_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packages = {
+                target: create_package(root, target)
+                for target in (
+                    "android",
+                    "ios",
+                    "macos-x64",
+                    "macos-arm64",
+                    "windows-x64",
+                )
+            }
+            xcframework, xc_metadata = create_xcframework_inputs(root)
+            sidecar = json.loads(xc_metadata.read_text())
+            sidecar["builder_commit"] = "b" * 40
+            xc_metadata.write_text(json.dumps(sidecar))
+
+            with self.assertRaisesRegex(CompositionError, "embedded metadata"):
+                create_release_manifest(
+                    packages=packages,
+                    android_aar=create_android_aar(root),
+                    xcframework=xcframework,
+                    xcframework_metadata=xc_metadata,
+                    output_dir=root / "release",
+                    builder_commit="a" * 40,
                     release_date="20260712",
                     platform="all",
                 )
@@ -377,6 +386,8 @@ class PreviewReleaseManifestTests(unittest.TestCase):
             payload["tag"],
             "webrtc-m150.7871.3-aaaaaaa-20260714-macos-android-preview.1",
         )
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(set(payload["snapshots"]), {"android", "macos-x64", "macos-arm64"})
         self.assertEqual(
             {asset["name"] for asset in payload["assets"]},
             {
@@ -387,9 +398,7 @@ class PreviewReleaseManifestTests(unittest.TestCase):
                 "WebRTC-m150-macos-universal.xcframework.zip",
             },
         )
-        self.assertFalse(
-            payload["verification"]["macos_x64_hardware_runtime_verified"]
-        )
+        self.assertFalse(payload["verification"]["macos_x64_hardware_runtime_verified"])
 
     def test_preview_rejects_evidence_for_different_aar(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

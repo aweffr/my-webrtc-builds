@@ -9,10 +9,11 @@ maintainers who build, compose, release, or diagnose the binary artifacts.
 - Build workflows are manually dispatched only. They do not run on push,
   pull request, or schedule.
 - Use the same repository commit for the five platform builds.
+- `zstd` is available on each runner for restoring the pinned source snapshot.
 
 ## Build platform artifacts
 
-Dispatch the four workflows from the intended branch or commit. Replace `main`
+Dispatch the five workflows from the intended branch or commit. Replace `main`
 when validating a feature branch.
 
 ```bash
@@ -44,8 +45,9 @@ gh workflow run package-macos-xcframework.yml \
   -f builder_commit=FULL_BUILDER_COMMIT
 ```
 
-The composition step rejects mismatched WebRTC source, builder commit,
-configuration fingerprint, header manifest, or CastTuning overlay manifest.
+The composition step rejects mismatched WebRTC source, source snapshot,
+builder commit, configuration fingerprint, header manifest, or CastTuning
+overlay manifest.
 
 ## Publish a release
 
@@ -163,7 +165,7 @@ Inspect these files first:
 | `build.log` | Exact command output and compiler/linker failure |
 | `build-events.jsonl` | Last completed phase and duration |
 | `runner-before.txt`, `runner-after.txt` | Runner image, tool versions, and disk pressure |
-| `webrtc-commit.txt`, `webrtc-status.txt` | Actual checked-out source and unexpected mutations |
+| `*.manifest.json`, `snapshot-cache-files.txt` | Verified source snapshot identity and cached asset inventory |
 | `gn-args-*` | Resolved GN arguments for each architecture; iOS retains both slices |
 | `patch-hashes.txt` | Exact patch files present in the workflow checkout |
 | `output-files.txt` | Full generated output inventory |
@@ -171,5 +173,5 @@ Inspect these files first:
 The builder deliberately does not serialize environment mappings into logs, so
 secrets such as `GITHUB_TOKEN` are not exposed. When fixing a reproducible
 failure, add a focused local regression test if the behavior can be tested
-without a full WebRTC checkout; then rerun every artifact that must share the
+without a full WebRTC build; then rerun every artifact that must share the
 same builder commit.

@@ -17,7 +17,7 @@ The project intentionally has no milestone input, updater, schedule, or moving b
 
 ## Architecture
 
-A small Python standard-library package owns the complete build contract: target configuration, source checkout, patch application, GN generation, Ninja execution, static archive assembly, package metadata, validation, and release composition. Platform workflows are thin adapters that select a target and runner.
+A small Python standard-library package owns the complete build contract: pinned source-snapshot restoration, patch application, GN generation, Ninja execution, static archive assembly, package metadata, validation, and release composition. Platform workflows are thin adapters that select a target and runner. Source acquisition never runs `fetch`, `gclient sync`, hooks, or a Google fallback; the verified snapshot retains pinned `depot_tools` only for GN and Ninja.
 
 The project borrows proven concepts rather than either reference repository wholesale:
 
@@ -110,7 +110,7 @@ Binary packages are:
 - `webrtc-m150-windows-x64.zip`
 - `WebRTC-m150-macos-universal.xcframework.zip`
 
-Every package includes or is accompanied by machine-readable metadata containing schema version, target, source version, builder commit, configuration fingerprint, GN arguments, patch hashes, runner/toolchain details (including the M150-pinned `depot_tools` commit), and payload checksums. Static packages also contain upstream `LICENSE`, `PATENTS`, `AUTHORS`, generated third-party `NOTICE`, and `SHA256SUMS`.
+Every package includes or is accompanied by schema 3 machine-readable metadata containing target, source version, target-specific snapshot repository/release/digests, builder commit, configuration fingerprint, GN arguments, patch hashes, runner/toolchain details (including the M150-pinned `depot_tools` commit), and payload checksums. Static packages also contain upstream `LICENSE`, `PATENTS`, `AUTHORS`, generated third-party `NOTICE`, and `SHA256SUMS`.
 
 The Android AAR is a first-class GitHub Release asset rather than an
 application-local repackaging step. Its `classes.jar` and
@@ -170,7 +170,7 @@ not created.
 
 ## Observability
 
-Every long-running phase writes both human-readable logs and an append-only JSONL journal containing target, architecture, phase state, duration, and sanitized failure information. Workflows preserve the complete builder output with `tee` and upload diagnostics on both success and failure. Diagnostics include runner/toolchain identity, disk snapshots, source commit/status, resolved GN arguments, and output inventories. Actions Step Summaries point directly to the failing phase and diagnostics artifact; command logging never serializes environment variables or tokens.
+Every long-running phase writes both human-readable logs and an append-only JSONL journal containing target, architecture, phase state, duration, and sanitized failure information. Snapshot manifest verification, archive download/cache validation, and extraction are separate phases. Workflows preserve the complete builder output with `tee` and upload diagnostics on both success and failure. Diagnostics include runner/toolchain identity, disk snapshots, snapshot identity/cache inventory, resolved GN arguments, and output inventories. Actions Step Summaries point directly to the failing phase and diagnostics artifact; command logging never serializes environment variables or tokens.
 
 ## Licensing
 

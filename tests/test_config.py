@@ -16,6 +16,55 @@ class SourceVersionTests(unittest.TestCase):
 
 
 class TargetConfigTests(unittest.TestCase):
+    def test_each_target_pins_complete_source_snapshot_contract(self) -> None:
+        expected = {
+            "android": (
+                "m150.7871.3-source-poc1",
+                "c41249db84fbdbb0c3ac96fbf25553dda4f50b3ac3d685213245d0ca6dadda4c",
+                "296bc53ec884627d0b73953b6ed46451d04271af1aec89cd999c110cc987ed39",
+                5,
+            ),
+            "ios": (
+                "m150.7871.3-source-poc1",
+                "1e6dc50a6d96b0801650aa08c01c06ff7f71c28dd58ce812f3a7b03edee20a59",
+                "ad37db58fbdba7f6d98b8081376944df7b12e82fe433646a639bbb6a517c7ac1",
+                2,
+            ),
+            "macos-x64": (
+                "m150.7871.3-source-poc1",
+                "79ea1e952d79f1d4b99f1bd2447757b33806995bffcabf84b63e632d8ec7b0ab",
+                "a7924bc6aec1d396bb4d0b293e70d9363b1195c6605f1d2eddfab68d0a6d9ef5",
+                2,
+            ),
+            "macos-arm64": (
+                "m150.7871.3-source-poc1",
+                "ffedc6bc27c66d7c83d683829ae37a31b17050983e9af801a0c96d1fd8de842c",
+                "66fbda6adb79a6fb9dc4c204611ab78f028a71745ae212c7437cb2c5b700543e",
+                2,
+            ),
+            "windows-x64": (
+                "m150.7871.3-source-windows-x64",
+                "4a5e8f2dbb25cce3ed884c03f28422a609e87cb4b87f0e5ddfcd94926c11db50",
+                "95062aa7044e0343edf08d2b869133e9e748ee3b5c1dad8a26ae109d89d445d1",
+                2,
+            ),
+        }
+
+        for target_name, contract in expected.items():
+            release_tag, manifest_sha256, archive_sha256, part_count = contract
+            snapshot = get_target(target_name).snapshot
+            with self.subTest(target=target_name):
+                self.assertEqual(snapshot.repository, "aweffr/webrtc-source-snapshots")
+                self.assertEqual(snapshot.release_tag, release_tag)
+                self.assertEqual(snapshot.manifest_sha256, manifest_sha256)
+                self.assertEqual(snapshot.archive_sha256, archive_sha256)
+                self.assertEqual(len(snapshot.parts), part_count)
+                self.assertEqual(
+                    snapshot.archive_size_bytes,
+                    sum(part.size_bytes for part in snapshot.parts),
+                )
+                self.assertTrue(all(len(part.sha256) == 64 for part in snapshot.parts))
+
     def test_exact_supported_target_set(self) -> None:
         self.assertEqual(
             set(TARGETS),

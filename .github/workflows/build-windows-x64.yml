@@ -28,6 +28,10 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Verify snapshot tooling
+        shell: pwsh
+        run: zstd --version
+
       - name: Record runner state
         shell: pwsh
         run: |
@@ -95,10 +99,10 @@ jobs:
             (Get-PSDrive C, D | Out-String)
             (Get-ChildItem $env:WORK_DIR, $env:DIST_DIR -ErrorAction SilentlyContinue | Out-String)
           ) | Set-Content "$env:DIAGNOSTICS_DIR\runner-after.txt"
-          $source = Join-Path $env:WORK_DIR "checkout\src"
-          if (Test-Path (Join-Path $source ".git")) {
-            git -C $source rev-parse HEAD | Set-Content "$env:DIAGNOSTICS_DIR\webrtc-commit.txt"
-            git -C $source status --short | Set-Content "$env:DIAGNOSTICS_DIR\webrtc-status.txt"
+          $snapshotCache = Join-Path $env:WORK_DIR "snapshot-cache"
+          if (Test-Path $snapshotCache) {
+            Get-ChildItem $snapshotCache -File | Select-Object Name, Length | Format-Table -AutoSize | Out-String | Set-Content "$env:DIAGNOSTICS_DIR\snapshot-cache-files.txt"
+            Get-ChildItem $snapshotCache -Filter *.manifest.json -File | Copy-Item -Destination $env:DIAGNOSTICS_DIR -Force
           }
           if (Test-Path (Join-Path $env:WORK_DIR "out")) {
             Get-ChildItem (Join-Path $env:WORK_DIR "out") -Filter gn-args.txt -Recurse | ForEach-Object {

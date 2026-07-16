@@ -55,8 +55,12 @@ class MetadataTests(unittest.TestCase):
             self.assertEqual(loaded, metadata)
             self.assertTrue(path.read_text().endswith("\n"))
             payload = json.loads(path.read_text())
-            self.assertEqual(payload["schema_version"], 2)
+            self.assertEqual(payload["schema_version"], 3)
             self.assertEqual(payload["tuning_schema_version"], 2)
+            self.assertEqual(
+                payload["snapshot"]["archive_sha256"],
+                get_target("macos-x64").snapshot.archive_sha256,
+            )
             self.assertEqual(
                 payload["overlay_hashes"],
                 {"api/cast_tuning/config.h": "overlay-sha256"},
@@ -64,8 +68,19 @@ class MetadataTests(unittest.TestCase):
 
     def test_unknown_schema_is_rejected(self) -> None:
         payload = metadata_for().to_dict()
-        payload["schema_version"] = 3
+        payload["schema_version"] = 2
         with self.assertRaisesRegex(MetadataError, "schema version"):
+            BuildMetadata.from_dict(payload)
+
+    def test_snapshot_provenance_is_required_and_must_match_target(self) -> None:
+        payload = metadata_for("android").to_dict()
+        payload.pop("snapshot")
+        with self.assertRaisesRegex(MetadataError, "snapshot"):
+            BuildMetadata.from_dict(payload)
+
+        payload = metadata_for("android").to_dict()
+        payload["snapshot"]["archive_sha256"] = "0" * 64
+        with self.assertRaisesRegex(MetadataError, "snapshot"):
             BuildMetadata.from_dict(payload)
 
     def test_legacy_tuning_schema_is_rejected_for_new_artifacts(self) -> None:

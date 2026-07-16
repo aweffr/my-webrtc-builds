@@ -30,6 +30,13 @@ The exact upstream source is WebRTC M150 branch-head `7871` commit
 `1f975dfd761af6e5d76d28333191973b258d82a8`. The project deliberately does
 not accept an arbitrary WebRTC version at build time.
 
+Platform builds restore fully pinned, target-specific source snapshots from
+`aweffr/webrtc-source-snapshots`. They verify the manifest, every release
+asset part, and the reassembled archive before applying this repository's
+patches and overlays. Builds do not run `fetch`, `gclient sync`, hooks, or a
+Google source fallback; the snapshot's pinned `depot_tools` supplies only GN
+and Ninja.
+
 ## Use CastTuning
 
 Start from [`examples/cast-tuning-detail-idle.json`](examples/cast-tuning-detail-idle.json).
@@ -101,8 +108,9 @@ The full design and boundaries are in
 | Windows x64 | `webrtc-m150-windows-x64.zip` | x64 `webrtc.lib`, C++ headers, CastTuning common C++ API, `/MT` Release ABI |
 | macOS universal | `WebRTC-m150-macos-universal.xcframework.zip` | universal `WebRTC.xcframework` |
 
-Static packages contain resolved GN arguments, metadata schema `2`, patch and
-overlay hashes, source/license notices, and `SHA256SUMS`.
+Static packages contain resolved GN arguments, metadata schema `3`, pinned
+snapshot provenance, patch and overlay hashes, source/license notices, and
+`SHA256SUMS`.
 
 ## Operational runbook
 

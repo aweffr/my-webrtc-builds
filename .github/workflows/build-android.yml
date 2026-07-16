@@ -35,6 +35,10 @@ jobs:
           distribution: temurin
           java-version: "11"
 
+      - name: Verify snapshot tooling
+        shell: bash
+        run: zstd --version
+
       - name: Reclaim runner disk
         shell: bash
         run: |
@@ -144,10 +148,9 @@ jobs:
             df -h
             du -sh "$WORK_DIR" "$DIST_DIR" 2>/dev/null
           } > "$DIAGNOSTICS_DIR/runner-after.txt"
-          if [ -d "$WORK_DIR/checkout/src/.git" ]; then
-            git -C "$WORK_DIR/checkout/src" rev-parse HEAD > "$DIAGNOSTICS_DIR/webrtc-commit.txt"
-            git -C "$WORK_DIR/checkout/src" status --short > "$DIAGNOSTICS_DIR/webrtc-status.txt"
-          fi
+          find "$WORK_DIR/snapshot-cache" -maxdepth 1 -type f -print \
+            > "$DIAGNOSTICS_DIR/snapshot-cache-files.txt" 2>/dev/null
+          cp "$WORK_DIR"/snapshot-cache/*.manifest.json "$DIAGNOSTICS_DIR/" 2>/dev/null
           while IFS= read -r args_file; do
             relative="${args_file#"$WORK_DIR/out/"}"
             safe_name="${relative//\//-}"

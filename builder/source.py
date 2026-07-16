@@ -7,14 +7,12 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
+from typing import Any
 
-from .config import SOURCE_VERSION, TargetConfig
+from .config import TargetConfig
+from .snapshot import restore_source_snapshot
 
-# This is the depot_tools revision recorded by the pinned WebRTC M150 DEPS file.
-DEPOT_TOOLS_COMMIT = "2f9bc10799af5aeb4a0ed903742ad69bb1d0ef75"
-_UNIFIED_HUNK_HEADER = re.compile(
-    r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@(?: .*)?$"
-)
+_UNIFIED_HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@(?: .*)?$")
 
 
 class BuildError(RuntimeError):
@@ -65,6 +63,8 @@ class Workspace:
         return environment
 
     def tool(self, name: str, target: TargetConfig | None = None) -> Path | str:
+        if name not in {"gn", "ninja"}:
+            raise BuildError(f"snapshot build tool {name!r} is not permitted")
         if target is not None and target.name == "windows-x64":
             return self.depot_tools / f"{name}.bat"
         return name
@@ -78,9 +78,7 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _overlay_sources(
-    target: TargetConfig, overlay_dir: Path
-) -> tuple[tuple[Path, Path], ...]:
+def _overlay_sources(target: TargetConfig, overlay_dir: Path) -> tuple[tuple[Path, Path], ...]:
     sources: list[tuple[Path, Path]] = []
     destinations: set[Path] = set()
     for group in target.overlays:
@@ -115,19 +113,6 @@ def apply_overlays(target: TargetConfig, workspace: Workspace, overlay_dir: Path
         shutil.copy2(source, destination)
 
 
-def _configure_target_os(target: TargetConfig, gclient_path: Path) -> None:
-    if target.name == "android":
-        target_os = "android"
-    elif target.name == "ios":
-        target_os = "ios"
-    else:
-        return
-    content = gclient_path.read_text()
-    declaration = f"target_os = [ '{target_os}' ]"
-    if declaration not in content:
-        gclient_path.write_text(content.rstrip() + f"\n{declaration}\n")
-
-
 def _validated_patch_paths(target: TargetConfig, patch_dir: Path) -> tuple[Path, ...]:
     paths: list[Path] = []
     for patch_name in target.patches:
@@ -136,9 +121,7 @@ def _validated_patch_paths(target: TargetConfig, patch_dir: Path) -> tuple[Path,
             raise BuildError(f"required patch is missing: {patch_path}")
         for line_number, line in enumerate(patch_path.read_text().splitlines(), start=1):
             if line.startswith("@@") and not _UNIFIED_HUNK_HEADER.fullmatch(line):
-                raise BuildError(
-                    f"invalid unified diff hunk header in {patch_path}:{line_number}"
-                )
+                raise BuildError(f"invalid unified diff hunk header in {patch_path}:{line_number}")
         paths.append(patch_path)
     return tuple(paths)
 
@@ -149,99 +132,14 @@ def prepare_source(
     patch_dir: Path,
     runner: Runner,
     overlay_dir: Path | None = None,
-) -> None:
-    workspace.root.mkdir(parents=True, exist_ok=True)
+    *,
+    snapshot_cache_dir: Path | None = None,
+    journal: Any | None = None,
+) -> dict[str, object]:
     patch_paths = _validated_patch_paths(target, patch_dir)
+    cache_dir = snapshot_cache_dir or workspace.root / "snapshot-cache"
+    manifest = restore_source_snapshot(target.snapshot, workspace.root, cache_dir, journal=journal)
     environment = workspace.environment(target)
-    if not workspace.depot_tools.exists():
-        workspace.depot_tools.mkdir(parents=True)
-        runner.run(["git", "init"], cwd=workspace.depot_tools)
-        runner.run(
-            [
-                "git",
-                "remote",
-                "add",
-                "origin",
-                "https://chromium.googlesource.com/chromium/tools/depot_tools.git",
-            ],
-            cwd=workspace.depot_tools,
-        )
-        runner.run(
-            ["git", "fetch", "--depth=1", "origin", DEPOT_TOOLS_COMMIT],
-            cwd=workspace.depot_tools,
-        )
-        runner.run(
-            ["git", "checkout", "--detach", DEPOT_TOOLS_COMMIT],
-            cwd=workspace.depot_tools,
-        )
-    actual_depot_tools_commit = runner.capture(
-        ["git", "rev-parse", "HEAD"], cwd=workspace.depot_tools
-    )
-    if actual_depot_tools_commit != DEPOT_TOOLS_COMMIT:
-        raise BuildError(
-            f"unexpected depot_tools commit {actual_depot_tools_commit!r}; "
-            f"expected {DEPOT_TOOLS_COMMIT}"
-        )
-    if target.name == "windows-x64" and not (
-        workspace.depot_tools / "git.bat"
-    ).is_file():
-        runner.run(
-            [workspace.depot_tools / "bootstrap" / "win_tools.bat"],
-            cwd=workspace.depot_tools,
-            env=environment,
-        )
-    if target.name != "windows-x64" and not (
-        workspace.depot_tools / "python3_bin_reldir.txt"
-    ).is_file():
-        runner.run(
-            [
-                "bash",
-                "-c",
-                "source ./cipd_bin_setup.sh; cipd_bin_setup; "
-                "source ./bootstrap_python3; bootstrap_python3",
-            ],
-            cwd=workspace.depot_tools,
-            env=environment,
-        )
-    if not workspace.src.exists():
-        workspace.checkout_root.mkdir(parents=True, exist_ok=True)
-        runner.run(
-            [workspace.tool("fetch", target), "--nohooks", "--no-history", "webrtc"],
-            cwd=workspace.checkout_root,
-            env=environment,
-        )
-        _configure_target_os(target, workspace.checkout_root / ".gclient")
-
-    runner.run(["git", "reset", "--hard"], cwd=workspace.src, env=environment)
-    runner.run(
-        ["git", "fetch", "--depth=1", "origin", SOURCE_VERSION.commit],
-        cwd=workspace.src,
-        env=environment,
-    )
-    runner.run(
-        ["git", "checkout", "--detach", SOURCE_VERSION.commit],
-        cwd=workspace.src,
-        env=environment,
-    )
-    runner.run(["git", "clean", "-df"], cwd=workspace.src, env=environment)
-    runner.run(
-        [
-            workspace.tool("gclient", target),
-            "sync",
-            "-D",
-            "--force",
-            "--reset",
-            "--no-history",
-        ],
-        cwd=workspace.src,
-        env=environment,
-    )
-    actual_commit = runner.capture(["git", "rev-parse", "HEAD"], cwd=workspace.src, env=environment)
-    if actual_commit != SOURCE_VERSION.commit:
-        raise BuildError(
-            f"unexpected WebRTC commit {actual_commit!r}; expected {SOURCE_VERSION.commit}"
-        )
-
     for patch_path in patch_paths:
         runner.run(
             ["git", "apply", "--check", patch_path],
@@ -253,3 +151,4 @@ def prepare_source(
         if overlay_dir is None:
             raise BuildError(f"target {target.name} requires an overlay directory")
         apply_overlays(target, workspace, overlay_dir)
+    return manifest

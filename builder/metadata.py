@@ -11,7 +11,7 @@ from typing import Any, Iterable, Mapping
 from .config import SOURCE_VERSION, TargetConfig, get_target
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class MetadataError(ValueError):
@@ -36,11 +36,24 @@ def _source_dict() -> dict[str, int | str]:
     }
 
 
+def snapshot_provenance(target: TargetConfig) -> dict[str, int | str]:
+    snapshot = target.snapshot
+    return {
+        "repository": snapshot.repository,
+        "release_tag": snapshot.release_tag,
+        "name": snapshot.name,
+        "manifest_sha256": snapshot.manifest_sha256,
+        "archive_sha256": snapshot.archive_sha256,
+        "archive_size_bytes": snapshot.archive_size_bytes,
+    }
+
+
 @dataclass(frozen=True)
 class BuildMetadata:
     schema_version: int
     target: str
     source: Mapping[str, int | str]
+    snapshot: Mapping[str, int | str]
     builder_commit: str
     configuration_fingerprint: str
     header_manifest: str
@@ -68,6 +81,7 @@ class BuildMetadata:
             schema_version=SCHEMA_VERSION,
             target=target,
             source=_source_dict(),
+            snapshot=snapshot_provenance(config),
             builder_commit=builder_commit,
             configuration_fingerprint=configuration_fingerprint(config),
             header_manifest=header_manifest,
@@ -83,6 +97,7 @@ class BuildMetadata:
             "schema_version": self.schema_version,
             "target": self.target,
             "source": dict(self.source),
+            "snapshot": dict(self.snapshot),
             "builder_commit": self.builder_commit,
             "configuration_fingerprint": self.configuration_fingerprint,
             "header_manifest": self.header_manifest,
@@ -109,6 +124,10 @@ class BuildMetadata:
         source = payload.get("source")
         if source != _source_dict():
             raise MetadataError("metadata source does not match pinned WebRTC M150")
+        snapshot = payload.get("snapshot")
+        expected_snapshot = snapshot_provenance(target)
+        if snapshot != expected_snapshot:
+            raise MetadataError("metadata snapshot provenance does not match pinned target")
         expected_fingerprint = configuration_fingerprint(target)
         actual_fingerprint = payload.get("configuration_fingerprint")
         if actual_fingerprint != expected_fingerprint:
@@ -139,6 +158,7 @@ class BuildMetadata:
             schema_version=SCHEMA_VERSION,
             target=target.name,
             source=dict(source),
+            snapshot=dict(snapshot),
             builder_commit=payload["builder_commit"],
             configuration_fingerprint=actual_fingerprint,
             header_manifest=payload["header_manifest"],

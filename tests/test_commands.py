@@ -2,10 +2,31 @@ import subprocess
 import unittest
 from pathlib import Path
 
+from builder.__main__ import _parser
 from builder.commands import CommandError, CommandRunner
 
 
 class CommandRunnerTests(unittest.TestCase):
+    def test_build_cli_accepts_only_cache_location_as_snapshot_override(self) -> None:
+        args = _parser().parse_args(
+            [
+                "build",
+                "--target",
+                "android",
+                "--work-dir",
+                "work",
+                "--dist-dir",
+                "dist",
+                "--builder-commit",
+                "a" * 40,
+                "--snapshot-cache-dir",
+                "cache",
+            ]
+        )
+        self.assertEqual(args.snapshot_cache_dir, Path("cache"))
+        for forbidden in ("snapshot_url", "snapshot_tag", "snapshot_repository"):
+            self.assertFalse(hasattr(args, forbidden))
+
     def test_failure_reports_command_and_status_without_environment(self) -> None:
         def failing_run(*args, **kwargs):
             raise subprocess.CalledProcessError(17, args[0], stderr="compile failed")

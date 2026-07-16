@@ -5,7 +5,7 @@ import json
 import shutil
 import zipfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Mapping
 
 from .metadata import BuildMetadata, MetadataError, load_metadata, release_tag, validate_compatible
@@ -151,11 +151,15 @@ def compose_macos_xcframework(
         raise CompositionError("xcodebuild did not create WebRTC.xcframework")
 
     metadata_payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "target": "macos-universal",
         "source": dict(inputs.x64_metadata.source),
         "builder_commit": inputs.x64_metadata.builder_commit,
         "header_manifest": inputs.x64_metadata.header_manifest,
+        "input_snapshots": {
+            "macos-x64": dict(inputs.x64_metadata.snapshot),
+            "macos-arm64": dict(inputs.arm64_metadata.snapshot),
+        },
         "input_configuration_fingerprints": {
             "macos-x64": inputs.x64_metadata.configuration_fingerprint,
             "macos-arm64": inputs.arm64_metadata.configuration_fingerprint,
@@ -188,6 +192,32 @@ def _load_xcframework_metadata(path: Path) -> dict[str, object]:
     return payload
 
 
+def _validate_xcframework_archive(archive: Path, sidecar_metadata: dict[str, object]) -> None:
+    metadata_name = "WebRTC.xcframework/metadata.json"
+    try:
+        with zipfile.ZipFile(archive) as stream:
+            names = stream.namelist()
+            if names.count(metadata_name) != 1:
+                raise CompositionError(
+                    "XCFramework archive must contain exactly one embedded metadata.json"
+                )
+            for name in names:
+                path = PurePosixPath(name)
+                if (
+                    name.startswith("/")
+                    or "\\" in name
+                    or ".." in path.parts
+                    or not path.parts
+                    or path.parts[0] != "WebRTC.xcframework"
+                ):
+                    raise CompositionError(f"XCFramework archive contains unexpected path: {name}")
+            embedded = json.loads(stream.read(metadata_name))
+    except (OSError, zipfile.BadZipFile, KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CompositionError(f"cannot read XCFramework archive metadata: {exc}") from exc
+    if not isinstance(embedded, dict) or embedded != sidecar_metadata:
+        raise CompositionError("XCFramework embedded metadata does not match provenance sidecar")
+
+
 def _load_json_object(path: Path, description: str) -> dict[str, object]:
     try:
         payload = json.loads(path.read_text())
@@ -199,19 +229,28 @@ def _load_json_object(path: Path, description: str) -> dict[str, object]:
 
 
 def _validate_preview_xcframework(
+    archive: Path,
     metadata_path: Path,
     reference: BuildMetadata,
-    macos_metadata: BuildMetadata,
+    macos_x64_metadata: BuildMetadata,
+    macos_arm64_metadata: BuildMetadata,
 ) -> None:
     metadata = _load_xcframework_metadata(metadata_path)
-    if metadata.get("schema_version") != 1 or metadata.get("target") != "macos-universal":
+    _validate_xcframework_archive(archive, metadata)
+    if metadata.get("schema_version") != 2 or metadata.get("target") != "macos-universal":
         raise CompositionError("invalid XCFramework metadata identity")
     if metadata.get("builder_commit") != reference.builder_commit:
         raise CompositionError("XCFramework uses a different builder commit")
     if metadata.get("source") != reference.source:
         raise CompositionError("XCFramework uses a different WebRTC source")
-    if metadata.get("header_manifest") != macos_metadata.header_manifest:
+    if metadata.get("header_manifest") != macos_x64_metadata.header_manifest:
         raise CompositionError("XCFramework uses a different header manifest")
+    expected_snapshots = {
+        "macos-x64": dict(macos_x64_metadata.snapshot),
+        "macos-arm64": dict(macos_arm64_metadata.snapshot),
+    }
+    if metadata.get("input_snapshots") != expected_snapshots:
+        raise CompositionError("XCFramework uses different source snapshots")
 
 
 def create_preview_release_manifest(
@@ -278,12 +317,14 @@ def create_preview_release_manifest(
     if xcframework.name != "WebRTC-m150-macos-universal.xcframework.zip":
         raise CompositionError(f"unexpected XCFramework filename: {xcframework.name}")
     _validate_preview_xcframework(
-        xcframework_metadata, reference, metadata["macos-x64"]
+        xcframework,
+        xcframework_metadata,
+        reference,
+        metadata["macos-x64"],
+        metadata["macos-arm64"],
     )
 
-    android_evidence = _load_json_object(
-        android_smoke_evidence, "Android AAR smoke evidence"
-    )
+    android_evidence = _load_json_object(android_smoke_evidence, "Android AAR smoke evidence")
     if android_evidence.get("schema_version") != 1:
         raise CompositionError("Android smoke evidence schema_version must be 1")
     if android_evidence.get("builder_commit") != builder_commit:
@@ -291,9 +332,7 @@ def create_preview_release_manifest(
     if android_evidence.get("workflow_run_id") != android_workflow_run_id:
         raise CompositionError("Android smoke evidence uses a different workflow run")
     if android_evidence.get("artifact_digest") != android_artifact_digest:
-        raise CompositionError(
-            "Android smoke evidence uses a different artifact digest"
-        )
+        raise CompositionError("Android smoke evidence uses a different artifact digest")
     if (
         not isinstance(android_artifact_digest, str)
         or not android_artifact_digest.startswith("sha256:")
@@ -309,21 +348,15 @@ def create_preview_release_manifest(
     ):
         raise CompositionError("Android smoke evidence does not satisfy the runtime gate")
 
-    macos_evidence = _load_json_object(
-        macos_probe_evidence, "macOS VideoToolbox probe evidence"
-    )
+    macos_evidence = _load_json_object(macos_probe_evidence, "macOS VideoToolbox probe evidence")
     if macos_evidence.get("schema_version") != 1:
         raise CompositionError("macOS probe evidence schema_version must be 1")
     if macos_evidence.get("xcframework_zip_sha256") != _sha256(xcframework):
-        raise CompositionError(
-            "macOS probe evidence XCFramework SHA does not match preview asset"
-        )
+        raise CompositionError("macOS probe evidence XCFramework SHA does not match preview asset")
     modes = macos_evidence.get("modes")
     if not isinstance(modes, list):
         raise CompositionError("macOS probe evidence modes must be an array")
-    by_mode = {
-        item.get("mode"): item for item in modes if isinstance(item, dict)
-    }
+    by_mode = {item.get("mode"): item for item in modes if isinstance(item, dict)}
     if set(by_mode) != {"normal", "low_latency"} or any(
         item.get("session_status") != "success" for item in by_mode.values()
     ):
@@ -342,9 +375,10 @@ def create_preview_release_manifest(
     tag = release_tag(builder_commit, release_date, "macos-android")
     tag = f"{tag}-preview.{preview_revision}"
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "tag": tag,
         "source": dict(reference.source),
+        "snapshots": {target: dict(item.snapshot) for target, item in sorted(metadata.items())},
         "builder_commit": reference.builder_commit,
         "release_date": release_date,
         "platform": "macos-android",
@@ -431,12 +465,13 @@ def create_release_manifest(
             f"unexpected XCFramework filename {xcframework.name}; expected {expected_xcframework_name}"
         )
     xc_metadata = _load_xcframework_metadata(xcframework_metadata)
+    _validate_xcframework_archive(xcframework, xc_metadata)
     reference = metadata[0]
     if reference.builder_commit != builder_commit:
         raise CompositionError(
             "workflow builder commit differs from release package builder commit"
         )
-    if xc_metadata.get("schema_version") != 1 or xc_metadata.get("target") != "macos-universal":
+    if xc_metadata.get("schema_version") != 2 or xc_metadata.get("target") != "macos-universal":
         raise CompositionError("invalid XCFramework metadata identity")
     if xc_metadata.get("builder_commit") != reference.builder_commit:
         raise CompositionError("XCFramework uses a different builder commit")
@@ -445,12 +480,22 @@ def create_release_manifest(
     mac_metadata = next(item for item in metadata if item.target == "macos-x64")
     if xc_metadata.get("header_manifest") != mac_metadata.header_manifest:
         raise CompositionError("XCFramework uses a different header manifest")
+    expected_xc_snapshots = {
+        target: dict(next(item for item in metadata if item.target == target).snapshot)
+        for target in ("macos-x64", "macos-arm64")
+    }
+    if xc_metadata.get("input_snapshots") != expected_xc_snapshots:
+        raise CompositionError("XCFramework uses different source snapshots")
 
     assets = [*packages.values(), android_aar, xcframework]
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "tag": release_tag(builder_commit, release_date, platform),
         "source": dict(reference.source),
+        "snapshots": {
+            item.target: dict(item.snapshot)
+            for item in sorted(metadata, key=lambda value: value.target)
+        },
         "builder_commit": reference.builder_commit,
         "release_date": release_date,
         "platform": platform,

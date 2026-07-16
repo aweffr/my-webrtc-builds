@@ -10,10 +10,10 @@ from .compose import (
     create_preview_release_manifest,
     create_release_manifest,
 )
-from .config import TARGETS, get_target
+from .config import DEPOT_TOOLS_COMMIT, TARGETS, get_target
 from .observability import BuildJournal, collect_toolchain
 from .package import stage_and_package
-from .source import DEPOT_TOOLS_COMMIT, Workspace, prepare_source
+from .source import Workspace, prepare_source
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -24,6 +24,11 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--work-dir", required=True, type=Path)
     build.add_argument("--dist-dir", required=True, type=Path)
     build.add_argument("--builder-commit", required=True)
+    build.add_argument(
+        "--snapshot-cache-dir",
+        type=Path,
+        help="cache for the pinned snapshot archive (defaults to WORK_DIR/snapshot-cache)",
+    )
     build.add_argument(
         "--patch-dir",
         type=Path,
@@ -86,15 +91,31 @@ def main(argv: list[str] | None = None) -> int:
             target=target.name,
             builder_commit=args.builder_commit,
             depot_tools_commit=DEPOT_TOOLS_COMMIT,
+            snapshot=target.snapshot.name,
+            snapshot_release=target.snapshot.release_tag,
+            snapshot_archive_sha256=target.snapshot.archive_sha256,
         )
         with journal.phase("source-prepare", target=target.name):
-            prepare_source(
+            snapshot_manifest = prepare_source(
                 target,
                 workspace,
                 args.patch_dir.resolve(),
                 runner,
                 args.overlay_dir.resolve(),
+                snapshot_cache_dir=(
+                    args.snapshot_cache_dir.resolve()
+                    if args.snapshot_cache_dir is not None
+                    else workspace.root / "snapshot-cache"
+                ),
+                journal=journal,
             )
+        journal.record(
+            "source-prepare",
+            "verified",
+            target=target.name,
+            snapshot=snapshot_manifest["snapshot"],
+            archive_sha256=snapshot_manifest["archive_sha256"],
+        )
         units = build_webrtc(target, workspace, runner, journal)
         with journal.phase("package", target=target.name):
             toolchain = collect_toolchain(target.name, runner)
