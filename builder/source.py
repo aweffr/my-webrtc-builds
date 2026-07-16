@@ -139,15 +139,23 @@ def prepare_source(
     patch_paths = _validated_patch_paths(target, patch_dir)
     cache_dir = snapshot_cache_dir or workspace.root / "snapshot-cache"
     manifest = restore_source_snapshot(target.snapshot, workspace.root, cache_dir, journal=journal)
+    patch_environment = dict(os.environ)
+    patch_environment["GIT_CEILING_DIRECTORIES"] = str(workspace.root)
     for patch_path in patch_paths:
         runner.run(
             ["git", "apply", "--check", patch_path],
             cwd=workspace.src,
+            env=patch_environment,
         )
-        runner.run(["git", "apply", patch_path], cwd=workspace.src)
+        runner.run(
+            ["git", "apply", patch_path],
+            cwd=workspace.src,
+            env=patch_environment,
+        )
         runner.run(
             ["git", "apply", "--reverse", "--check", patch_path],
             cwd=workspace.src,
+            env=patch_environment,
         )
     if target.overlays:
         if overlay_dir is None:
