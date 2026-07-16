@@ -203,6 +203,22 @@ out of scope. The selected implementation therefore keeps the stable live API
 but performs a controlled VideoToolbox compression-session replacement for
 each changed max-QP generation.
 
+The final local arm64 package was built from builder commit
+`fa0763d92694be52cda2ea0dc2bc2e1b4aedd357`. Its XCFramework zip SHA-256 is
+`264692ea18790940a1121ca4d2a0729722fbd604e3fc88f2812b1541a91a8044`.
+The real hardware probe produced three sessions for `32 → 24 → 32`, with
+effective and actual QP equal to each requested value. Hosted macOS arm64 run
+`29475664586` also completed successfully from the same commit.
+
+The downstream reference app commit `a2c306e4dac27a9792a640b2920ed990a0f632cd`
+then completed four independent Mac main-display to Android TV API 31 arm64
+emulator sessions through verified `relay/relay + UDP`. Requested, effective,
+and actual IDR QP were exactly `24/24/24`, `22/22/22`, `20/20/20`, and
+`18/18/18`. All four Android images were 1920×1080 and were inspected at
+original detail. The measured report recommends static Max QP 22 as the
+default engineering tradeoff while preserving motion Max QP 32; QP 20 remains
+an optional quality-biased setting and QP 18 is not the default.
+
 The repository's full unit suite, targeted native tests, macOS build/package
 verification, downstream build/tests, and E2E runner must pass before the
 experiment report is considered complete.

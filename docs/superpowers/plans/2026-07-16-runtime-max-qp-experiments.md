@@ -347,7 +347,7 @@ Supply runtime provider/result blocks, encode three distinct forced keyframes,
 and record requested/effective/actual QP, bytes, generation and session ID for
 each. Keep the low-latency profile evidence already required by the probe.
 
-- [ ] **Step 4: Build the arm64 package from the feature worktree**
+- [x] **Step 4: Build the arm64 package from the feature worktree**
 
 Run with the repository's verified snapshot cache and an isolated build root:
 
@@ -377,7 +377,7 @@ EVIDENCE_DIR="$PWD/evidence/runtime-max-qp" \
 Expected: 32 → 24 → 32 applies on three encoder-session IDs without SDP
 renegotiation and every keyframe's actual QP is at most its requested cap.
 
-- [ ] **Step 6: Commit the hardware proof tooling**
+- [x] **Step 6: Commit the hardware proof tooling**
 
 ```bash
 git add tools tests/test_verify.py
@@ -394,7 +394,7 @@ git commit -m "test: verify runtime videotoolbox max qp"
 - Test: `apps/macos/WebRTCScreencastTests/RuntimeConfigurationTests.swift`
 - Modify: `scripts/bootstrap-webrtc.sh` only through local artifact override support; do not commit a machine path.
 
-- [ ] **Step 1: Write Swift tests for QP transition ordering**
+- [x] **Step 1: Write Swift tests for QP transition ordering**
 
 Change the live-policy closure to receive `(fps, bitrate, maxQp)` and require:
 
@@ -414,7 +414,7 @@ XCTAssertEqual(calls, ["apply:15:5000000:32"])
 Add runtime configuration tests accepting 24, 22, 20 and 18, rejecting values
 outside 0 through 51, and defaulting the reference sender to 24.
 
-- [ ] **Step 2: Run focused XCTest cases and verify RED**
+- [x] **Step 2: Run focused XCTest cases and verify RED**
 
 Run:
 
@@ -425,7 +425,7 @@ make test-macos
 Expected: compile/test failure because the controller and configuration do not
 yet expose a static max-QP value.
 
-- [ ] **Step 3: Implement the sender policy**
+- [x] **Step 3: Implement the sender policy**
 
 Add optional `static_max_qp` to local runtime JSON with default 24 and retain
 dynamic cap 32 as an application constant. Initialize
@@ -441,7 +441,7 @@ Treat `.applied` as accepted and preserve the existing force-IDR ordering and
 retry latch. Sample `RTCCastTuningSnapshot` into sender JSONL so each experiment
 can read requested/effective/apply-state/generation/actual-QP evidence.
 
-- [ ] **Step 4: Install the newly built XCFramework locally and verify GREEN**
+- [x] **Step 4: Install the newly built XCFramework locally and verify GREEN**
 
 Use environment overrides supported by `scripts/bootstrap-webrtc.sh` to point
 at the new local zip, then run:
@@ -453,7 +453,7 @@ make build-macos
 
 Expected: all macOS tests pass and the app links the new public API.
 
-- [ ] **Step 5: Commit the downstream integration**
+- [x] **Step 5: Commit the downstream integration**
 
 ```bash
 git add apps/macos scripts/bootstrap-webrtc.sh
@@ -468,14 +468,14 @@ git commit -m "feat(macos): tune static max qp at runtime"
 - Modify: `Makefile`
 - Generated ignored evidence: `artifacts/static-qp-experiment/<run-id>/`
 
-- [ ] **Step 1: Write analyzer/renderer tests first**
+- [x] **Step 1: Write analyzer/renderer tests first**
 
 Create fixture records for requested caps 24, 22, 20 and 18. Require the
 analyzer to reject a missing PNG, missing actual QP, mismatched requested QP,
 non-relay/UDP path, different encoder-session IDs within a case, and a decoded
 image not equal to 1920x1080. Require Markdown rows sorted 24, 22, 20, 18.
 
-- [ ] **Step 2: Run the script tests and verify RED**
+- [x] **Step 2: Run the script tests and verify RED**
 
 Run:
 
@@ -485,7 +485,7 @@ python3 -m unittest scripts/test_static_qp_experiment.py -v
 
 Expected: import/file failure because the experiment analyzer is absent.
 
-- [ ] **Step 3: Implement focused TURN/UDP orchestration**
+- [x] **Step 3: Implement focused TURN/UDP orchestration**
 
 For each value in `24 22 20 18`, derive a temporary runtime config containing
 `static_max_qp`, then invoke the existing E2E entry point:
@@ -506,7 +506,7 @@ the first `encoder_qp_sample` for the applied generation. Build one canonical
 environment, path evidence and the four case records. Never retain the runtime
 config or TURN credentials.
 
-- [ ] **Step 4: Verify the script unit tests GREEN**
+- [x] **Step 4: Verify the script unit tests GREEN**
 
 Run:
 
@@ -517,7 +517,7 @@ make test-scripts
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Run the real four-case experiment**
+- [x] **Step 5: Run the real four-case experiment**
 
 Run:
 
@@ -530,7 +530,7 @@ Run:
 Expected: four successful relay/relay UDP sessions, four 1920x1080 Android
 decoded PNGs, and four records with requested, effective and actual QP.
 
-- [ ] **Step 6: Commit automation, not raw ignored evidence**
+- [x] **Step 6: Commit automation, not raw ignored evidence**
 
 ```bash
 git add scripts/run-static-qp-experiment.sh scripts/test_static_qp_experiment.py Makefile
@@ -546,14 +546,14 @@ git commit -m "test: automate static max qp experiments"
 - Modify: `docs/superpowers/specs/2026-07-16-runtime-max-qp-design.md` only for execution findings or follow-ups
 - Modify: this plan to check completed steps and record exact commands/results
 
-- [ ] **Step 1: Open all four final Android PNGs with `view_image`**
+- [x] **Step 1: Open all four final Android PNGs with `view_image`**
 
 Inspect each at original detail. Record cursor presence, complete 1920x1080
 framing, text legibility, fine-line preservation, flat-color banding,
 blocking/ringing and any Android UI overlay. Do not infer visual quality solely
 from QP or a metric.
 
-- [ ] **Step 2: Render the measured Markdown report**
+- [x] **Step 2: Render the measured Markdown report**
 
 The report must include this evidence table populated from `experiment.json`:
 
@@ -570,7 +570,7 @@ Also include exact commits/artifact digests, host/emulator context, commands,
 evidence binding method, limitations, and a measured recommendation. State
 that lower QP is a cap rather than a guaranteed exact output.
 
-- [ ] **Step 3: Run the full verification suite**
+- [x] **Step 3: Run the full verification suite**
 
 In `my-webrtc-builds`:
 
@@ -598,7 +598,7 @@ to requirement alignment and Critical/High correctness, concurrency,
 compatibility, observability and verification risks. Apply justified fixes and
 repeat at most three rounds.
 
-- [ ] **Step 5: Commit documentation and measured evidence**
+- [x] **Step 5: Commit documentation and measured evidence**
 
 ```bash
 git add docs/experiments docs/README.md docs/superpowers
