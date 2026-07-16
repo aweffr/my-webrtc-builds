@@ -1,4 +1,5 @@
 import io
+import os
 import tarfile
 import tempfile
 import unittest
@@ -10,6 +11,7 @@ from builder.config import get_target
 from builder.metadata import load_metadata
 from builder.package import (
     PackageError,
+    create_android_aar,
     create_tar_gz,
     create_zip,
     header_manifest,
@@ -92,6 +94,42 @@ class ArchiveSafetyTests(unittest.TestCase):
             extracted = root / "extracted"
             safe_extract_zip(archive, extracted)
             self.assertEqual((extracted / "webrtc" / "metadata.json").read_text(), "{}")
+
+    def test_zip_accepts_snapshot_normalized_epoch_timestamp(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "stage"
+            source.mkdir()
+            payload = source / "LICENSE"
+            payload.write_text("license")
+            os.utime(payload, (0, 0))
+
+            archive = root / "package.zip"
+            create_zip(source, archive, arcname="webrtc")
+
+            with zipfile.ZipFile(archive) as stream:
+                self.assertEqual(stream.read("webrtc/LICENSE"), b"license")
+
+    def test_android_aar_accepts_snapshot_normalized_epoch_timestamp(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stage = root / "stage"
+            jar = stage / "jar" / "webrtc.jar"
+            jni = stage / "jni" / "arm64-v8a" / "libjingle_peerconnection_so.so"
+            jar.parent.mkdir(parents=True)
+            jni.parent.mkdir(parents=True)
+            jar.write_bytes(b"jar")
+            jni.write_bytes(b"jni")
+            os.utime(jar, (0, 0))
+            os.utime(jni, (0, 0))
+            manifest = root / "AndroidManifest.xml"
+            manifest.write_text("<manifest />")
+
+            archive = root / "webrtc.aar"
+            create_android_aar(stage, manifest, archive)
+
+            with zipfile.ZipFile(archive) as stream:
+                self.assertEqual(stream.read("classes.jar"), b"jar")
 
 
 class PackageContractTests(unittest.TestCase):

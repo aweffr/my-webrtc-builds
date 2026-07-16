@@ -132,6 +132,15 @@ class SourcePreparationTests(unittest.TestCase):
                 apply_overlays(get_target("android"), workspace, overlay)
 
     def test_snapshot_is_restored_before_patches_and_overlays_are_applied(self) -> None:
+        class EnvironmentRunner(FakeRunner):
+            def __init__(self) -> None:
+                super().__init__()
+                self.environments: list[tuple[tuple[str, ...], object]] = []
+
+            def run(self, argv, *, cwd=None, env=None) -> None:
+                self.environments.append((tuple(map(str, argv)), env))
+                super().run(argv, cwd=cwd, env=env)
+
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             workspace = Workspace(root)
@@ -143,7 +152,7 @@ class SourcePreparationTests(unittest.TestCase):
                 source = overlay_dir / group / group / "placeholder.h"
                 source.parent.mkdir(parents=True)
                 source.write_text(group)
-            runner = FakeRunner()
+            runner = EnvironmentRunner()
 
             def restore(spec, workspace_root, cache_dir, journal=None):
                 self.assertEqual(spec, get_target("android").snapshot)
@@ -169,7 +178,18 @@ class SourcePreparationTests(unittest.TestCase):
                 patch_path = str(patch_dir / patch_name)
                 check_index = commands.index(("git", "apply", "--check", patch_path))
                 apply_index = commands.index(("git", "apply", patch_path))
+                reverse_check_index = commands.index(
+                    ("git", "apply", "--reverse", "--check", patch_path)
+                )
                 self.assertLess(check_index, apply_index)
+                self.assertLess(apply_index, reverse_check_index)
+            self.assertTrue(
+                all(
+                    environment is None
+                    for command, environment in runner.environments
+                    if command[:2] == ("git", "apply")
+                )
+            )
             for group in get_target("android").overlays:
                 self.assertTrue((workspace.src / group / "placeholder.h").is_file())
 

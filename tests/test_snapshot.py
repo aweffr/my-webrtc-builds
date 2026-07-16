@@ -158,6 +158,31 @@ class SnapshotContractTests(unittest.TestCase):
 
         self.assertEqual(calls, {part.name: 2 for part in spec.parts})
 
+    def test_interrupted_parts_are_retained_and_resumed_by_next_restore(self) -> None:
+        spec, contents = tiny_snapshot()
+
+        def interrupted(url: str, destination: Path) -> None:
+            name = url.rsplit("/", 1)[-1]
+            if name == spec.parts[0].name:
+                destination.write_bytes(contents[name][:2])
+                raise urllib.error.URLError("interrupted")
+            destination.write_bytes(contents[name])
+
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)
+            with self.assertRaises(urllib.error.URLError):
+                ensure_snapshot_archive(spec, cache, download=interrupted)
+            retained = cache / f"{spec.parts[0].name}.partial"
+            self.assertEqual(retained.read_bytes(), b"fi")
+
+            def resume(url: str, destination: Path) -> None:
+                name = url.rsplit("/", 1)[-1]
+                existing = destination.read_bytes() if destination.exists() else b""
+                destination.write_bytes(existing + contents[name][len(existing) :])
+
+            archive = ensure_snapshot_archive(spec, cache, download=resume)
+            self.assertEqual(archive.read_bytes(), b"firstsecond")
+
     def test_part_downloads_are_parallel_but_capped_at_three(self) -> None:
         spec, contents = tiny_snapshot()
         spec = replace(

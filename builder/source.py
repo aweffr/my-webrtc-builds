@@ -139,14 +139,16 @@ def prepare_source(
     patch_paths = _validated_patch_paths(target, patch_dir)
     cache_dir = snapshot_cache_dir or workspace.root / "snapshot-cache"
     manifest = restore_source_snapshot(target.snapshot, workspace.root, cache_dir, journal=journal)
-    environment = workspace.environment(target)
     for patch_path in patch_paths:
         runner.run(
             ["git", "apply", "--check", patch_path],
             cwd=workspace.src,
-            env=environment,
         )
-        runner.run(["git", "apply", patch_path], cwd=workspace.src, env=environment)
+        runner.run(["git", "apply", patch_path], cwd=workspace.src)
+        runner.run(
+            ["git", "apply", "--reverse", "--check", patch_path],
+            cwd=workspace.src,
+        )
     if target.overlays:
         if overlay_dir is None:
             raise BuildError(f"target {target.name} requires an overlay directory")

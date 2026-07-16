@@ -95,7 +95,12 @@ def create_tar_gz(source: Path, archive: Path, *, arcname: str) -> None:
 def create_zip(source: Path, archive: Path, *, arcname: str) -> None:
     archive.parent.mkdir(parents=True, exist_ok=True)
     prefix = arcname.rstrip("/")
-    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as stream:
+    with zipfile.ZipFile(
+        archive,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+        strict_timestamps=False,
+    ) as stream:
         for path in sorted(source.rglob("*")):
             if path.is_dir():
                 continue
@@ -105,7 +110,12 @@ def create_zip(source: Path, archive: Path, *, arcname: str) -> None:
 
 def create_android_aar(stage: Path, manifest: Path, archive: Path) -> None:
     archive.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as stream:
+    with zipfile.ZipFile(
+        archive,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+        strict_timestamps=False,
+    ) as stream:
         stream.write(manifest, "AndroidManifest.xml")
         stream.write(stage / "jar" / "webrtc.jar", "classes.jar")
         stream.write(

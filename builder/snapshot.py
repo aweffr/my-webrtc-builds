@@ -83,7 +83,8 @@ def _download_verified(
                     _validate_file(destination, size_bytes=size_bytes, sha256=sha256)
                     return
                 except SnapshotError:
-                    pass
+                    if destination.stat().st_size >= size_bytes:
+                        destination.unlink()
             download(url, destination)
             _validate_file(destination, size_bytes=size_bytes, sha256=sha256)
             return
@@ -145,10 +146,8 @@ def ensure_snapshot_archive(
     assembling = archive.with_suffix(archive.suffix + ".partial")
     assembling.unlink(missing_ok=True)
     temporary_parts = [cache_dir / f"{part.name}.partial" for part in spec.parts]
+    succeeded = False
     try:
-        for destination in temporary_parts:
-            destination.unlink(missing_ok=True)
-
         def fetch(item: tuple[object, Path]) -> Path:
             part, destination = item
             _download_verified(
@@ -172,13 +171,15 @@ def ensure_snapshot_archive(
             sha256=spec.archive_sha256,
         )
         assembling.replace(archive)
+        succeeded = True
         return archive
     except BaseException:
         assembling.unlink(missing_ok=True)
         raise
     finally:
-        for part in temporary_parts:
-            part.unlink(missing_ok=True)
+        if succeeded:
+            for part in temporary_parts:
+                part.unlink(missing_ok=True)
 
 
 def ensure_snapshot_manifest(
@@ -200,21 +201,16 @@ def ensure_snapshot_manifest(
         manifest.unlink(missing_ok=True)
 
     temporary = manifest.with_suffix(manifest.suffix + ".partial")
-    temporary.unlink(missing_ok=True)
-    try:
-        _download_verified(
-            spec.asset_url(spec.manifest_name),
-            temporary,
-            size_bytes=spec.manifest_size_bytes,
-            sha256=spec.manifest_sha256,
-            download=download,
-        )
-        payload = validate_snapshot_manifest(spec, temporary.read_bytes())
-        temporary.replace(manifest)
-        return manifest, payload
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
+    _download_verified(
+        spec.asset_url(spec.manifest_name),
+        temporary,
+        size_bytes=spec.manifest_size_bytes,
+        sha256=spec.manifest_sha256,
+        download=download,
+    )
+    payload = validate_snapshot_manifest(spec, temporary.read_bytes())
+    temporary.replace(manifest)
+    return manifest, payload
 
 
 def _safe_destination(root: Path, name: str) -> Path:
