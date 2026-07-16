@@ -8,7 +8,9 @@ maintainers who build, compose, release, or diagnose the binary artifacts.
 - `gh auth status` succeeds for `aweffr/my-webrtc-builds`.
 - Build workflows are manually dispatched only. They do not run on push,
   pull request, or schedule.
-- Use the same repository commit for the five platform builds.
+- Use the same pinned WebRTC source and compatible configuration for all
+  platform builds. Release manifests may combine platform packages built by
+  different builder commits and record each commit separately.
 - `zstd` is available on each runner for restoring the pinned source snapshot.
 
 ## Build platform artifacts
@@ -64,12 +66,14 @@ gh workflow run publish-release.yml \
   -f macos_arm64_run_id=MACOS_ARM64_RUN_ID \
   -f windows_x64_run_id=WINDOWS_X64_RUN_ID \
   -f xcframework_run_id=XCFRAMEWORK_RUN_ID \
-  -f builder_commit=FULL_BUILDER_COMMIT
+  -f builder_commit=RELEASE_TAG_PROVENANCE_COMMIT
 ```
 
-The release workflow validates every input artifact before publishing and
-rejects mixed builder commits, source versions, and existing tags. Release tags
-are provenance based:
+The release workflow validates every input artifact before publishing. It
+allows platform packages from different builder commits, while recording the
+per-platform builder commits in `release-manifest.json`; the macOS thin inputs
+and their XCFramework must still share one builder commit. Release tags are
+based on the explicit release provenance commit:
 
 ```text
 webrtc-m150.7871.3-<builder-short-sha>-YYYYMMDD-all
@@ -112,7 +116,7 @@ gh workflow run publish-macos-android-preview.yml \
   -f macos_x64_run_id=MACOS_X64_RUN_ID \
   -f macos_arm64_run_id=MACOS_ARM64_RUN_ID \
   -f xcframework_run_id=XCFRAMEWORK_RUN_ID \
-  -f builder_commit=FULL_BUILDER_COMMIT \
+  -f builder_commit=RELEASE_TAG_PROVENANCE_COMMIT \
   -f preview_revision=1 \
   -f android_smoke_evidence_json="$(jq -c . ANDROID_EVIDENCE_JSON)" \
   -f macos_probe_evidence_json="$(jq -c . MACOS_EVIDENCE_JSON)"
@@ -173,5 +177,5 @@ Inspect these files first:
 The builder deliberately does not serialize environment mappings into logs, so
 secrets such as `GITHUB_TOKEN` are not exposed. When fixing a reproducible
 failure, add a focused local regression test if the behavior can be tested
-without a full WebRTC build; then rerun every artifact that must share the
-same builder commit.
+without a full WebRTC build; then rerun the affected artifact. Rebuild both
+macOS thin packages together when the XCFramework must be recomposed.

@@ -97,6 +97,11 @@ class MetadataTests(unittest.TestCase):
         with self.assertRaisesRegex(MetadataError, "builder commit"):
             validate_compatible((first, replace(second, builder_commit="b" * 40)))
 
+        validate_compatible(
+            (first, replace(second, builder_commit="b" * 40)),
+            require_same_builder_commit=False,
+        )
+
         changed_source = dict(second.source)
         changed_source["commit"] = "b" * 40
         with self.assertRaisesRegex(MetadataError, "source"):

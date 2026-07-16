@@ -20,7 +20,7 @@ on:
         required: true
         type: string
       builder_commit:
-        description: Full commit SHA recorded in every package
+        description: Full commit SHA used for preview tag provenance and release target
         required: true
         type: string
       preview_revision:
@@ -197,7 +197,7 @@ jobs:
             echo "- Publish: \`${{ steps.publish.outcome }}\`"
             echo "- Published asset verification: \`${{ steps.verify.outcome }}\`"
             echo "- Tag: \`${{ steps.manifest.outputs.tag }}\`"
-            echo "- Artifact builder commit: \`${{ inputs.builder_commit }}\`"
+            echo "- Release tag provenance commit: \`${{ inputs.builder_commit }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload diagnostics

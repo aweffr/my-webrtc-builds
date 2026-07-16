@@ -83,7 +83,11 @@ Build workflows upload compressed packages as 30-day Actions artifacts. Compress
 
 The XCFramework workflow accepts explicit x64 and arm64 run IDs. It rejects mismatched WebRTC commits, builder commits, configuration fingerprints, or header manifests. It creates a universal framework binary with `lipo`, then wraps that framework with `xcodebuild -create-xcframework`.
 
-The release workflow accepts five build run IDs and the XCFramework run ID. It rejects mixed builder commits and existing release tags. The combined-release tag format is `webrtc-m150.7871.3-<builder-short-sha>-YYYYMMDD-all`.
+The release workflow accepts five build run IDs and the XCFramework run ID. It
+may combine platform packages from different builder commits, records those
+commits per asset in the release manifest, and rejects incompatible source or
+configuration identities and existing release tags. The combined-release tag
+format is `webrtc-m150.7871.3-<release-provenance-short-sha>-YYYYMMDD-all`.
 
 The stable `-all` contract remains unchanged. A scoped GitHub pre-release may
 publish only the platforms changed by an experimental binary revision without
@@ -145,10 +149,10 @@ The builder fails immediately when source identity, patch applicability, expecte
 
 Unit tests protect target configuration, metadata construction and validation, archive path safety, cross-run compatibility, and release-tag rules. Each actual build additionally verifies archive members, CPU architecture, framework plist/symlinks/headers, Java contents, codec symbols, checksums, and package structure.
 
-The full release delivery is complete only after all five hosted-runner builds succeed, the universal XCFramework is produced, and the corresponding GitHub Release is published and downloaded for checksum verification. The Windows extension itself is accepted on this branch after its hosted build succeeds; combined-release publication remains a later same-commit operation.
+The full release delivery is complete only after all five hosted-runner builds succeed, the universal XCFramework is produced, and the corresponding GitHub Release is published and downloaded for checksum verification. Platform packages may come from different builder commits; the release provenance commit and a per-platform builder-commit map are recorded explicitly. The two macOS thin packages and their universal XCFramework remain a same-commit composition boundary.
 
 A scoped pre-release is complete when every artifact in its declared platform
-set is built from the same builder commit, composed artifacts validate against
+set is provenance-recorded per artifact, composed artifacts validate against
 their inputs, the partial release manifest lists exactly that set, GitHub marks
 the release as pre-release, and every uploaded asset is downloaded and its
 checksum reverified. For a scoped release containing Android, the compile and

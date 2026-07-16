@@ -267,7 +267,11 @@ def _validate_preview_xcframework(
     _validate_xcframework_archive(archive, metadata)
     if metadata.get("schema_version") != 2 or metadata.get("target") != "macos-universal":
         raise CompositionError("invalid XCFramework metadata identity")
-    if metadata.get("builder_commit") != reference.builder_commit:
+    if macos_x64_metadata.builder_commit != macos_arm64_metadata.builder_commit:
+        raise CompositionError(
+            "macOS thin packages must use the same builder commit for XCFramework provenance"
+        )
+    if metadata.get("builder_commit") != macos_x64_metadata.builder_commit:
         raise CompositionError("XCFramework uses a different builder commit")
     if metadata.get("source") != reference.source:
         raise CompositionError("XCFramework uses a different WebRTC source")
@@ -325,7 +329,7 @@ def create_preview_release_manifest(
                     f"package key {target} contains metadata target {item.target}"
                 )
             metadata[target] = item
-        validate_compatible(metadata.values())
+        validate_compatible(metadata.values(), require_same_builder_commit=False)
         try:
             verify_android_aar(android_aar, validation_dir / "android" / "webrtc")
         except (OSError, zipfile.BadZipFile, VerificationError) as exc:
@@ -336,10 +340,6 @@ def create_preview_release_manifest(
         shutil.rmtree(validation_dir, ignore_errors=True)
 
     reference = metadata["android"]
-    if reference.builder_commit != builder_commit:
-        raise CompositionError(
-            "workflow builder commit differs from preview package builder commit"
-        )
     if android_aar.name != "webrtc-m150-android-arm64-v8a.aar":
         raise CompositionError(f"unexpected Android AAR filename: {android_aar.name}")
     if xcframework.name != "WebRTC-m150-macos-universal.xcframework.zip":
@@ -355,7 +355,7 @@ def create_preview_release_manifest(
     android_evidence = _load_json_object(android_smoke_evidence, "Android AAR smoke evidence")
     if android_evidence.get("schema_version") != 1:
         raise CompositionError("Android smoke evidence schema_version must be 1")
-    if android_evidence.get("builder_commit") != builder_commit:
+    if android_evidence.get("builder_commit") != reference.builder_commit:
         raise CompositionError("Android smoke evidence uses a different builder commit")
     if android_evidence.get("workflow_run_id") != android_workflow_run_id:
         raise CompositionError("Android smoke evidence uses a different workflow run")
@@ -407,7 +407,13 @@ def create_preview_release_manifest(
         "tag": tag,
         "source": dict(reference.source),
         "snapshots": {target: dict(item.snapshot) for target, item in sorted(metadata.items())},
-        "builder_commit": reference.builder_commit,
+        "builder_commit": builder_commit,
+        "builder_commits": {
+            **{target: item.builder_commit for target, item in metadata.items()},
+            "macos-universal": str(
+                _load_xcframework_metadata(xcframework_metadata)["builder_commit"]
+            ),
+        },
         "release_date": release_date,
         "platform": "macos-android",
         "preview_revision": preview_revision,
@@ -472,7 +478,7 @@ def create_release_manifest(
                     f"package key {target} contains metadata target {item.target}"
                 )
             metadata.append(item)
-        validate_compatible(metadata)
+        validate_compatible(metadata, require_same_builder_commit=False)
         try:
             verify_android_aar(android_aar, validation_dir / "android" / "webrtc")
         except (OSError, zipfile.BadZipFile, VerificationError) as exc:
@@ -495,17 +501,18 @@ def create_release_manifest(
     xc_metadata = _load_xcframework_metadata(xcframework_metadata)
     _validate_xcframework_archive(xcframework, xc_metadata)
     reference = metadata[0]
-    if reference.builder_commit != builder_commit:
-        raise CompositionError(
-            "workflow builder commit differs from release package builder commit"
-        )
     if xc_metadata.get("schema_version") != 2 or xc_metadata.get("target") != "macos-universal":
         raise CompositionError("invalid XCFramework metadata identity")
-    if xc_metadata.get("builder_commit") != reference.builder_commit:
+    mac_metadata = next(item for item in metadata if item.target == "macos-x64")
+    arm64_metadata = next(item for item in metadata if item.target == "macos-arm64")
+    if mac_metadata.builder_commit != arm64_metadata.builder_commit:
+        raise CompositionError(
+            "macOS thin packages must use the same builder commit for XCFramework provenance"
+        )
+    if xc_metadata.get("builder_commit") != mac_metadata.builder_commit:
         raise CompositionError("XCFramework uses a different builder commit")
     if xc_metadata.get("source") != reference.source:
         raise CompositionError("XCFramework uses a different WebRTC source")
-    mac_metadata = next(item for item in metadata if item.target == "macos-x64")
     if xc_metadata.get("header_manifest") != mac_metadata.header_manifest:
         raise CompositionError("XCFramework uses a different header manifest")
     expected_xc_snapshots = {
@@ -524,7 +531,11 @@ def create_release_manifest(
             item.target: dict(item.snapshot)
             for item in sorted(metadata, key=lambda value: value.target)
         },
-        "builder_commit": reference.builder_commit,
+        "builder_commit": builder_commit,
+        "builder_commits": {
+            **{item.target: item.builder_commit for item in metadata},
+            "macos-universal": str(xc_metadata["builder_commit"]),
+        },
         "release_date": release_date,
         "platform": platform,
         "assets": [

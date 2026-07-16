@@ -188,6 +188,7 @@ def load_metadata(path: Path) -> BuildMetadata:
 def validate_compatible(
     metadata: Iterable[BuildMetadata],
     *,
+    require_same_builder_commit: bool = True,
     require_same_headers: bool = False,
     require_same_patches: bool = False,
 ) -> None:
@@ -198,7 +199,7 @@ def validate_compatible(
     for candidate in items[1:]:
         if candidate.source != first.source:
             raise MetadataError("packages use different WebRTC source versions")
-        if candidate.builder_commit != first.builder_commit:
+        if require_same_builder_commit and candidate.builder_commit != first.builder_commit:
             raise MetadataError("packages use different builder commits")
         if require_same_patches and candidate.patch_hashes != first.patch_hashes:
             raise MetadataError("packages use different patch sets")

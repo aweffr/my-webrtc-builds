@@ -1,6 +1,7 @@
 import json
 import hashlib
 import io
+import os
 import tempfile
 import unittest
 import zipfile
@@ -224,7 +225,8 @@ class MacOSInputTests(unittest.TestCase):
             direct = framework / "WebRTC"
             versioned = framework / "Versions" / "A" / "WebRTC"
             self.assertTrue(direct.is_symlink())
-            self.assertEqual(direct.resolve(), versioned.resolve())
+            self.assertEqual(direct.readlink(), Path("Versions/Current/WebRTC"))
+            self.assertTrue(os.path.samefile(direct, versioned))
             self.assertEqual(versioned.read_bytes(), b"universal")
 
     def test_composition_rejects_workflow_commit_different_from_inputs(self) -> None:
@@ -300,11 +302,19 @@ class ReleaseManifestTests(unittest.TestCase):
             {asset["name"] for asset in payload["assets"]},
         )
 
-    def test_release_rejects_workflow_commit_different_from_inputs(self) -> None:
+    def test_release_allows_workflow_commit_different_from_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             packages = {
-                target: create_package(root, target)
+                target: create_package(
+                    root,
+                    target,
+                    metadata=(
+                        build_metadata(target, builder_commit="b" * 40)
+                        if target == "windows-x64"
+                        else None
+                    ),
+                )
                 for target in (
                     "android",
                     "ios",
@@ -314,17 +324,29 @@ class ReleaseManifestTests(unittest.TestCase):
                 )
             }
             xcframework, xc_metadata = create_xcframework_inputs(root)
-            with self.assertRaisesRegex(CompositionError, "workflow builder commit"):
-                create_release_manifest(
-                    packages=packages,
-                    android_aar=create_android_aar(root),
-                    xcframework=xcframework,
-                    xcframework_metadata=xc_metadata,
-                    output_dir=root / "release",
-                    builder_commit="b" * 40,
-                    release_date="20260712",
-                    platform="all",
-                )
+            manifest = create_release_manifest(
+                packages=packages,
+                android_aar=create_android_aar(root),
+                xcframework=xcframework,
+                xcframework_metadata=xc_metadata,
+                output_dir=root / "release",
+                builder_commit="c" * 40,
+                release_date="20260712",
+                platform="all",
+            )
+            payload = json.loads(manifest.read_text())
+            self.assertEqual(payload["builder_commit"], "c" * 40)
+            self.assertEqual(
+                payload["builder_commits"],
+                {
+                    "android": "a" * 40,
+                    "ios": "a" * 40,
+                    "macos-arm64": "a" * 40,
+                    "macos-universal": "a" * 40,
+                    "macos-x64": "a" * 40,
+                    "windows-x64": "b" * 40,
+                },
+            )
 
     def test_release_rejects_xcframework_with_different_embedded_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -361,7 +383,11 @@ class PreviewReleaseManifestTests(unittest.TestCase):
     def test_preview_requires_bound_android_and_macos_runtime_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            android = create_package(root, "android")
+            android = create_package(
+                root,
+                "android",
+                build_metadata("android", builder_commit="b" * 40),
+            )
             android_aar = create_android_aar(root)
             macos_x64 = create_package(root, "macos-x64")
             macos_arm64 = create_package(root, "macos-arm64")
@@ -372,7 +398,7 @@ class PreviewReleaseManifestTests(unittest.TestCase):
                     {
                         "schema_version": 1,
                         "workflow_run_id": 123,
-                        "builder_commit": "a" * 40,
+                        "builder_commit": "b" * 40,
                         "artifact_digest": "sha256:" + "b" * 64,
                         "aar_sha256": sha256(android_aar),
                         "android_api_level": 31,
@@ -420,7 +446,7 @@ class PreviewReleaseManifestTests(unittest.TestCase):
                 android_smoke_evidence=android_evidence,
                 macos_probe_evidence=macos_evidence,
                 output_dir=root / "preview",
-                builder_commit="a" * 40,
+                builder_commit="c" * 40,
                 android_workflow_run_id=123,
                 android_artifact_digest="sha256:" + "b" * 64,
                 release_date="20260714",
@@ -430,9 +456,11 @@ class PreviewReleaseManifestTests(unittest.TestCase):
 
         self.assertEqual(
             payload["tag"],
-            "webrtc-m150.7871.3-aaaaaaa-20260714-macos-android-preview.1",
+            "webrtc-m150.7871.3-ccccccc-20260714-macos-android-preview.1",
         )
         self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(payload["builder_commit"], "c" * 40)
+        self.assertEqual(payload["builder_commits"]["android"], "b" * 40)
         self.assertEqual(set(payload["snapshots"]), {"android", "macos-x64", "macos-arm64"})
         self.assertEqual(
             {asset["name"] for asset in payload["assets"]},

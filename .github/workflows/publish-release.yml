@@ -28,7 +28,7 @@ on:
         required: true
         type: string
       builder_commit:
-        description: Full commit SHA recorded in all input package metadata
+        description: Full commit SHA used for release tag provenance and release target
         required: true
         type: string
 
@@ -162,7 +162,7 @@ jobs:
             --target "${{ steps.manifest.outputs.builder_commit }}" \
             --draft \
             --title "$TAG" \
-            --notes "Pinned WebRTC branch-heads/7871@{#3}, commit 1f975dfd761af6e5d76d28333191973b258d82a8. Artifact builder commit: ${{ inputs.builder_commit }}. Composer/release workflow commit: ${GITHUB_SHA}." \
+            --notes "Pinned WebRTC branch-heads/7871@{#3}, commit 1f975dfd761af6e5d76d28333191973b258d82a8. Release tag provenance commit: ${{ inputs.builder_commit }}. Per-asset builder commits are recorded in release-manifest.json. Composer/release workflow commit: ${GITHUB_SHA}." \
             inputs/android/webrtc-m150-android-arm64-v8a.tar.gz \
             inputs/android/webrtc-m150-android-arm64-v8a.aar \
             inputs/ios/webrtc-m150-ios.tar.gz \
@@ -187,7 +187,7 @@ jobs:
             echo "- Manifest validation: \`${{ steps.manifest.outcome }}\`"
             echo "- Publish: \`${{ steps.publish.outcome }}\`"
             echo "- Tag: \`${{ steps.manifest.outputs.tag }}\`"
-            echo "- Artifact builder commit: \`${{ inputs.builder_commit }}\`"
+            echo "- Release tag provenance commit: \`${{ inputs.builder_commit }}\`"
             echo "- Composer/release workflow commit: \`$GITHUB_SHA\`"
             echo "- Diagnostics artifact: \`webrtc-m150-release-diagnostics\`"
           } >> "$GITHUB_STEP_SUMMARY"
