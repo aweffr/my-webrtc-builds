@@ -74,6 +74,12 @@ class CastTuningNativeContractTests(unittest.TestCase):
         ).read_text()
         self.assertNotIn("RTCDefaultVideoEncoderFactory", objc)
 
+    def test_native_validation_target_is_reachable_without_rtc_tests(self) -> None:
+        root_patch = (ROOT / "patches" / "m150" / "cast_tuning_hooks.patch").read_text()
+        build = (CORE / "BUILD.gn").read_text()
+        self.assertIn('"api/cast_tuning:cast_tuning_native_tests"', root_patch)
+        self.assertNotIn("testonly = true", build)
+
     def test_macos_exposes_per_factory_live_max_qp_control(self) -> None:
         objc_root = (
             ROOT

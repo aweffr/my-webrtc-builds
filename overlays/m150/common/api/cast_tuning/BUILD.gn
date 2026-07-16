@@ -30,7 +30,6 @@ rtc_library("cast_tuning") {
 }
 
 rtc_executable("cast_tuning_native_tests") {
-  testonly = true
   defines = [ "CAST_TUNING_WITH_JSON_TESTS" ]
   sources = [
     "cast_tuning_config_unittest.cc",

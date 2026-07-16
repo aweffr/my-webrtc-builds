@@ -1,11 +1,12 @@
 diff --git a/BUILD.gn b/BUILD.gn
 --- a/BUILD.gn
 +++ b/BUILD.gn
-@@ -533,6 +533,7 @@ if (!build_with_chromium) {
+@@ -533,6 +533,8 @@ if (!build_with_chromium) {
      defines = []
  
      deps = [
 +      "api/cast_tuning",
++      "api/cast_tuning:cast_tuning_native_tests",
        "api:create_modular_peer_connection_factory",
        "api:create_peerconnection_factory",
        "api:enable_media",
