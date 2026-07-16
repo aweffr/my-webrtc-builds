@@ -92,9 +92,12 @@ RTC_OBJC_EXPORT
 @property(nonatomic, readonly) NSString *maxQpApplyState;
 @property(nonatomic, readonly) uint64_t maxQpGeneration;
 @property(nonatomic, readonly, nullable) NSNumber *maxQpOSStatus;
+@property(nonatomic, readonly, nullable) NSString *maxQpAppliedEncoderSessionId;
 @property(nonatomic, readonly, nullable) NSNumber *lastEncodedQp;
 @property(nonatomic, readonly, nullable) NSNumber *lastKeyFrameQp;
 @property(nonatomic, readonly, nullable) NSNumber *lastKeyFrameBytes;
+@property(nonatomic, readonly) uint64_t lastQpSampleGeneration;
+@property(nonatomic, readonly, nullable) NSString *lastQpSampleEncoderSessionId;
 
 @end
 

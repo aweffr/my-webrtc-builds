@@ -103,6 +103,9 @@ class CastTuningNativeContractTests(unittest.TestCase):
         self.assertIn("NSNumber *lastEncodedQp", header)
         self.assertIn("NSNumber *lastKeyFrameQp", header)
         self.assertIn("NSNumber *lastKeyFrameBytes", header)
+        self.assertIn("NSString *maxQpAppliedEncoderSessionId", header)
+        self.assertIn("uint64_t lastQpSampleGeneration", header)
+        self.assertIn("NSString *lastQpSampleEncoderSessionId", header)
         self.assertIn("RTCCastTuningEncoderRuntimeState", implementation)
         self.assertIn('options[@"encoder_runtime_qp_provider"]', implementation)
         self.assertIn(
@@ -110,6 +113,11 @@ class CastTuningNativeContractTests(unittest.TestCase):
         )
         self.assertIn("class ObjCEncoderRuntimeAdapter", implementation)
         self.assertIn("ApplyMaxQp", implementation)
+        self.assertIn("_lastKeyFrameQp = nil", implementation)
+        self.assertIn(
+            "[eventEncoderSessionId isEqualToString:_appliedEncoderSessionId]",
+            implementation,
+        )
 
     def test_android_jni_handles_are_raw_jlong_parameters(self) -> None:
         source = (

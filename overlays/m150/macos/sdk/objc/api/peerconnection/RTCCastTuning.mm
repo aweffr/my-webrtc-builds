@@ -126,9 +126,12 @@ NSError *CastError(NSString *message) {
   NSString *_applyState;
   uint64_t _generation;
   NSNumber *_osStatus;
+  NSString *_appliedEncoderSessionId;
   NSNumber *_lastEncodedQp;
   NSNumber *_lastKeyFrameQp;
   NSNumber *_lastKeyFrameBytes;
+  uint64_t _lastQpSampleGeneration;
+  NSString *_lastQpSampleEncoderSessionId;
 }
 
 - (instancetype)initWithMaxQp:(NSNumber *)maxQp {
@@ -149,8 +152,15 @@ NSError *CastError(NSString *message) {
   }
   [_lock lock];
   _requestedMaxQp = @(maxQp);
+  _effectiveMaxQp = nil;
   _applyState = @"pending";
   _osStatus = nil;
+  _appliedEncoderSessionId = nil;
+  _lastEncodedQp = nil;
+  _lastKeyFrameQp = nil;
+  _lastKeyFrameBytes = nil;
+  _lastQpSampleGeneration = 0;
+  _lastQpSampleEncoderSessionId = nil;
   ++_generation;
   [_lock unlock];
   return YES;
@@ -175,17 +185,35 @@ NSError *CastError(NSString *message) {
     return;
   }
   if ([eventType isEqualToString:@"encoder_runtime_qp_applied"]) {
+    NSString *eventEncoderSessionId = event[@"encoder_session_id"];
+    if (![eventEncoderSessionId isKindOfClass:[NSString class]] ||
+        eventEncoderSessionId.length == 0) {
+      [_lock unlock];
+      return;
+    }
     _effectiveMaxQp = event[@"effective_max_qp"];
     _applyState = @"applied";
     _osStatus = event[@"os_status"];
+    _appliedEncoderSessionId = [eventEncoderSessionId copy];
   } else if ([eventType isEqualToString:@"encoder_runtime_qp_unsupported"]) {
     _applyState = @"unsupported";
     _osStatus = event[@"os_status"];
+    _appliedEncoderSessionId = nil;
   } else if ([eventType isEqualToString:@"encoder_runtime_qp_failed"]) {
     _applyState = @"failed";
     _osStatus = event[@"os_status"];
+    _appliedEncoderSessionId = nil;
   } else if ([eventType isEqualToString:@"encoder_qp_sample"]) {
+    NSString *eventEncoderSessionId = event[@"encoder_session_id"];
+    if (![_applyState isEqualToString:@"applied"] ||
+        ![eventEncoderSessionId isKindOfClass:[NSString class]] ||
+        ![eventEncoderSessionId isEqualToString:_appliedEncoderSessionId]) {
+      [_lock unlock];
+      return;
+    }
     _lastEncodedQp = event[@"actual_qp"];
+    _lastQpSampleGeneration = _generation;
+    _lastQpSampleEncoderSessionId = [eventEncoderSessionId copy];
     if ([event[@"key_frame"] boolValue]) {
       _lastKeyFrameQp = event[@"actual_qp"];
       _lastKeyFrameBytes = event[@"encoded_bytes"];
@@ -202,9 +230,14 @@ NSError *CastError(NSString *message) {
     @"apply_state" : _applyState,
     @"generation" : @(_generation),
     @"os_status" : _osStatus ?: [NSNull null],
+    @"applied_encoder_session_id" :
+        _appliedEncoderSessionId ?: [NSNull null],
     @"last_encoded_qp" : _lastEncodedQp ?: [NSNull null],
     @"last_key_frame_qp" : _lastKeyFrameQp ?: [NSNull null],
     @"last_key_frame_bytes" : _lastKeyFrameBytes ?: [NSNull null],
+    @"last_qp_sample_generation" : @(_lastQpSampleGeneration),
+    @"last_qp_sample_encoder_session_id" :
+        _lastQpSampleEncoderSessionId ?: [NSNull null],
   };
   [_lock unlock];
   return snapshot;
@@ -473,9 +506,12 @@ class ObjCVideoSourceAdapter final
 @property(nonatomic) NSString *maxQpApplyState;
 @property(nonatomic) uint64_t maxQpGeneration;
 @property(nonatomic, nullable) NSNumber *maxQpOSStatus;
+@property(nonatomic, nullable) NSString *maxQpAppliedEncoderSessionId;
 @property(nonatomic, nullable) NSNumber *lastEncodedQp;
 @property(nonatomic, nullable) NSNumber *lastKeyFrameQp;
 @property(nonatomic, nullable) NSNumber *lastKeyFrameBytes;
+@property(nonatomic) uint64_t lastQpSampleGeneration;
+@property(nonatomic, nullable) NSString *lastQpSampleEncoderSessionId;
 @end
 
 @implementation RTCCastTuningSnapshot
@@ -746,6 +782,17 @@ class ObjCVideoSourceAdapter final
 #undef RTC_CAST_NULLABLE_NUMBER
   snapshot.maxQpApplyState = runtime[@"apply_state"];
   snapshot.maxQpGeneration = [runtime[@"generation"] unsignedLongLongValue];
+  snapshot.maxQpAppliedEncoderSessionId =
+      [runtime[@"applied_encoder_session_id"] isKindOfClass:[NSString class]]
+          ? runtime[@"applied_encoder_session_id"]
+          : nil;
+  snapshot.lastQpSampleGeneration =
+      [runtime[@"last_qp_sample_generation"] unsignedLongLongValue];
+  snapshot.lastQpSampleEncoderSessionId =
+      [runtime[@"last_qp_sample_encoder_session_id"]
+              isKindOfClass:[NSString class]]
+          ? runtime[@"last_qp_sample_encoder_session_id"]
+          : nil;
   return snapshot;
 }
 
