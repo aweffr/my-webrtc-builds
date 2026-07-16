@@ -26,7 +26,6 @@ class CastTuningNativeContractTests(unittest.TestCase):
                 [
                     "git",
                     "apply",
-                    "--check",
                     f"--include={relative.as_posix()}",
                     str(ROOT / "patches" / "m150" / "cast_tuning_hooks.patch"),
                 ],
@@ -35,6 +34,16 @@ class CastTuningNativeContractTests(unittest.TestCase):
                 text=True,
                 capture_output=True,
             )
+            transformed = destination.read_text()
+        self.assertIn("encoder_runtime_qp_provider", transformed)
+        self.assertIn("VTSessionCopySupportedPropertyDictionary", transformed)
+        self.assertIn("kVTCompressionPropertyKey_MaxAllowedFrameQP", transformed)
+        self.assertIn("VTSessionCopyProperty", transformed)
+        self.assertIn("encoder_runtime_qp_result_handler", transformed)
+        self.assertIn("encoder_runtime_qp_applied", transformed)
+        self.assertIn("encoder_qp_sample", transformed)
+        self.assertIn("resetCompressionSessionForRuntimeMaxQpIfNeeded", transformed)
+        self.assertIn("encoderSessionId:encodeParams->encoder_session_id", transformed)
 
     def test_native_contract_tests_use_platform_neutral_paths(self) -> None:
         platform_absolute_path = re.compile(r'"(?:/|[A-Za-z]:[\\/]|\\\\)')
@@ -66,6 +75,49 @@ class CastTuningNativeContractTests(unittest.TestCase):
             / "RTCCastTuning.mm"
         ).read_text()
         self.assertNotIn("RTCDefaultVideoEncoderFactory", objc)
+
+    def test_native_validation_target_is_reachable_without_rtc_tests(self) -> None:
+        root_patch = (ROOT / "patches" / "m150" / "cast_tuning_hooks.patch").read_text()
+        build = (CORE / "BUILD.gn").read_text()
+        self.assertIn('"api/cast_tuning:cast_tuning_native_tests"', root_patch)
+        self.assertNotIn("testonly = true", build)
+
+    def test_macos_exposes_per_factory_live_max_qp_control(self) -> None:
+        objc_root = (
+            ROOT
+            / "overlays"
+            / "m150"
+            / "macos"
+            / "sdk"
+            / "objc"
+            / "api"
+            / "peerconnection"
+        )
+        header = (objc_root / "RTCCastTuning.h").read_text()
+        implementation = (objc_root / "RTCCastTuning.mm").read_text()
+
+        self.assertIn("NSNumber *maxQp", header)
+        self.assertIn("NSNumber *requestedMaxQp", header)
+        self.assertIn("NSNumber *effectiveMaxQp", header)
+        self.assertIn("NSString *maxQpApplyState", header)
+        self.assertIn("NSNumber *lastEncodedQp", header)
+        self.assertIn("NSNumber *lastKeyFrameQp", header)
+        self.assertIn("NSNumber *lastKeyFrameBytes", header)
+        self.assertIn("NSString *maxQpAppliedEncoderSessionId", header)
+        self.assertIn("uint64_t lastQpSampleGeneration", header)
+        self.assertIn("NSString *lastQpSampleEncoderSessionId", header)
+        self.assertIn("RTCCastTuningEncoderRuntimeState", implementation)
+        self.assertIn('options[@"encoder_runtime_qp_provider"]', implementation)
+        self.assertIn(
+            'options[@"encoder_runtime_qp_result_handler"]', implementation
+        )
+        self.assertIn("class ObjCEncoderRuntimeAdapter", implementation)
+        self.assertIn("ApplyMaxQp", implementation)
+        self.assertIn("_lastKeyFrameQp = nil", implementation)
+        self.assertIn(
+            "[eventEncoderSessionId isEqualToString:_appliedEncoderSessionId]",
+            implementation,
+        )
 
     def test_android_jni_handles_are_raw_jlong_parameters(self) -> None:
         source = (

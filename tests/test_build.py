@@ -185,13 +185,24 @@ class SourcePreparationTests(unittest.TestCase):
                 )
                 self.assertLess(check_index, apply_index)
                 self.assertLess(apply_index, reverse_check_index)
+            patch_environments = [
+                environment
+                for command, environment in runner.environments
+                if command[:2] == ("git", "apply")
+            ]
+            self.assertTrue(patch_environments)
+            patch_environments = [
+                environment
+                for command, environment in runner.environments
+                if command[:2] == ("git", "apply")
+            ]
+            self.assertTrue(patch_environments)
             self.assertTrue(
                 all(
                     environment is not None
                     and environment.get("GIT_CEILING_DIRECTORIES")
                     == str(workspace.checkout_root.resolve())
-                    for command, environment in runner.environments
-                    if command[:2] == ("git", "apply")
+                    for environment in patch_environments
                 )
             )
             for group in get_target("android").overlays:

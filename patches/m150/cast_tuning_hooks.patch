@@ -1,11 +1,12 @@
 diff --git a/BUILD.gn b/BUILD.gn
 --- a/BUILD.gn
 +++ b/BUILD.gn
-@@ -533,6 +533,7 @@ if (!build_with_chromium) {
+@@ -533,6 +533,8 @@ if (!build_with_chromium) {
      defines = []
  
      deps = [
 +      "api/cast_tuning",
++      "api/cast_tuning:cast_tuning_native_tests",
        "api:create_modular_peer_connection_factory",
        "api:create_peerconnection_factory",
        "api:enable_media",
@@ -526,10 +527,72 @@ index 8479d78b0e..9b73d72ace 100644
   */
  + (NSArray<RTC_OBJC_TYPE(RTCVideoCodecInfo) *> *)supportedCodecs;
 diff --git a/sdk/objc/components/video_codec/RTCVideoEncoderH264.mm b/sdk/objc/components/video_codec/RTCVideoEncoderH264.mm
-index 0fe7f05762..7efc78cb21 100644
+index 0fe7f05762..0d20535c00 100644
 --- a/sdk/objc/components/video_codec/RTCVideoEncoderH264.mm
 +++ b/sdk/objc/components/video_codec/RTCVideoEncoderH264.mm
-@@ -335,6 +335,50 @@ NSUInteger GetMaxSampleRate(
+@@ -49,7 +49,14 @@
+     : (id<RTC_OBJC_TYPE(RTCCodecSpecificInfo)>)codecSpecificInfo width
+     : (int32_t)width height : (int32_t)height renderTimeMs
+     : (int64_t)renderTimeMs timestamp : (uint32_t)timestamp rotation
+-    : (RTCVideoRotation)rotation;
++    : (RTCVideoRotation)rotation maxQpGeneration
++    : (uint64_t)maxQpGeneration requestedMaxQp
++    : (int)requestedMaxQp encoderSessionId : (NSString *)encoderSessionId;
++
++- (NSDictionary<NSString *, id> *)applyPendingCastTuningMaxQp;
++- (int)resetCompressionSessionForRuntimeMaxQpIfNeeded:
++           (RTC_OBJC_TYPE(RTCVideoFrame) *)frame
++                                             didReset:(BOOL *)didReset;
+ 
+ @end
+ 
+@@ -75,13 +82,19 @@ struct RTCFrameEncodeParams {
+                        int32_t h,
+                        int64_t rtms,
+                        uint32_t ts,
+-                       RTCVideoRotation r)
++                       RTCVideoRotation r,
++                       uint64_t max_qp_generation,
++                       int requested_max_qp,
++                       NSString *encoder_session_id)
+       : encoder(e),
+         width(w),
+         height(h),
+         render_time_ms(rtms),
+         timestamp(ts),
+-        rotation(r) {
++        rotation(r),
++        max_qp_generation(max_qp_generation),
++        requested_max_qp(requested_max_qp),
++        encoder_session_id([encoder_session_id copy]) {
+     if (csi) {
+       codecSpecificInfo = csi;
+     } else {
+@@ -97,6 +110,9 @@ struct RTCFrameEncodeParams {
+   int64_t render_time_ms;
+   uint32_t timestamp;
+   RTCVideoRotation rotation;
++  uint64_t max_qp_generation;
++  int requested_max_qp;
++  NSString *encoder_session_id;
+ };
+ 
+ // We receive I420Frames as input, but we need to feed CVPixelBuffers into the
+@@ -190,8 +206,11 @@ void compressionOutputCallback(void *encoder,
+                                    width:encodeParams->width
+                                   height:encodeParams->height
+                             renderTimeMs:encodeParams->render_time_ms
+-                               timestamp:encodeParams->timestamp
+-                                rotation:encodeParams->rotation];
++                                timestamp:encodeParams->timestamp
++                                rotation:encodeParams->rotation
++                         maxQpGeneration:encodeParams->max_qp_generation
++                          requestedMaxQp:encodeParams->requested_max_qp
++                          encoderSessionId:encodeParams->encoder_session_id];
+ }
+ 
+ // Extract VideoToolbox profile out of the webrtc::SdpVideoFormat. If there is
+@@ -335,6 +346,50 @@ NSUInteger GetMaxSampleRate(
        return 0;
    }
  }
@@ -578,10 +641,9 @@ index 0fe7f05762..7efc78cb21 100644
 +  }
 +}
  }  // namespace
--
-+
+ 
  @implementation RTC_OBJC_TYPE (RTCVideoEncoderH264) {
-@@ -354,6 +397,11 @@ NSUInteger GetMaxSampleRate(
+@@ -354,6 +409,12 @@ NSUInteger GetMaxSampleRate(
  
    webrtc::H264BitstreamParser _h264BitstreamParser;
    std::vector<uint8_t> _frameScaleBuffer;
@@ -589,11 +651,12 @@ index 0fe7f05762..7efc78cb21 100644
 +  NSString *_encoderId;
 +  NSString *_encoderSessionId;
 +  uint64_t _compressionSessionSequence;
++  uint64_t _lastAppliedMaxQpGeneration;
 +  BOOL _profileEvidenceReported;
  }
  
  + (NSArray<RTC_OBJC_TYPE(RTCVideoCodecInfo) *> *)supportedCodecs {
-@@ -389,6 +437,13 @@ NSUInteger GetMaxSampleRate(
+@@ -389,6 +450,13 @@ NSUInteger GetMaxSampleRate(
  // of time.
  - (instancetype)initWithCodecInfo:
      (RTC_OBJC_TYPE(RTCVideoCodecInfo) *)codecInfo {
@@ -607,7 +670,7 @@ index 0fe7f05762..7efc78cb21 100644
    self = [super init];
    if (self) {
      _codecInfo = codecInfo;
-@@ -401,6 +456,7 @@ NSUInteger GetMaxSampleRate(
+@@ -401,6 +469,7 @@ NSUInteger GetMaxSampleRate(
      RTC_LOG(LS_INFO) << "Using profile "
                       << CFStringToString(ExtractProfile(*_profile_level_id));
      RTC_CHECK([codecInfo.name isEqualToString:kRTCVideoCodecH264Name]);
@@ -615,23 +678,66 @@ index 0fe7f05762..7efc78cb21 100644
    }
    return self;
  }
-@@ -684,6 +740,13 @@ NSUInteger GetMaxSampleRate(
--
+@@ -456,6 +532,31 @@ NSUInteger GetMaxSampleRate(
+     isKeyframeRequired = YES;
+   }
+ 
++  BOOL resetForRuntimeMaxQp = NO;
++  const int runtimeResetStatus =
++      [self resetCompressionSessionForRuntimeMaxQpIfNeeded:frame
++                                                  didReset:&resetForRuntimeMaxQp];
++  if (runtimeResetStatus != WEBRTC_VIDEO_CODEC_OK) {
++    return runtimeResetStatus;
++  }
++  if (resetForRuntimeMaxQp) {
++    isKeyframeRequired = YES;
++  }
 +
++  // Apply the newest runtime QP request on the encoder's encode path. This
++  // keeps the change ordered before the first frame carrying its generation.
++  NSDictionary<NSString *, id> *runtimeQpRequest =
++      [self applyPendingCastTuningMaxQp];
++  id generationValue = runtimeQpRequest[@"generation"];
++  id maxQpValue = runtimeQpRequest[@"requested_max_qp"];
++  const uint64_t maxQpGeneration =
++      [generationValue isKindOfClass:[NSNumber class]]
++          ? [generationValue unsignedLongLongValue]
++          : 0;
++  const int requestedMaxQp = [maxQpValue isKindOfClass:[NSNumber class]]
++      ? [maxQpValue intValue]
++      : 0;
++
+   CVPixelBufferRef pixelBuffer = nullptr;
+   if ([frame.buffer isKindOfClass:[RTC_OBJC_TYPE(RTCCVPixelBuffer) class]]) {
+     // Native frame buffer
+@@ -537,7 +638,10 @@ NSUInteger GetMaxSampleRate(
+       _height,
+       frame.timeStampNs / webrtc::kNumNanosecsPerMillisec,
+       frame.timeStamp,
+-      frame.rotation));
++      frame.rotation,
++      maxQpGeneration,
++      requestedMaxQp,
++      _encoderSessionId));
+   encodeParams->codecSpecificInfo.packetizationMode = _packetizationMode;
+ 
+   // Update the bitrate if needed.
+@@ -684,6 +769,14 @@ NSUInteger GetMaxSampleRate(
+ 
  - (int)resetCompressionSessionWithPixelFormat:(OSType)framePixelFormat {
    [self destroyCompressionSession];
 +  _profileEvidenceReported = NO;
++  _lastAppliedMaxQpGeneration = 0;
 +  _encoderId = nil;
 +  _encoderSessionId = [NSString
 +      stringWithFormat:@"vt-%p-%llu",
 +                       self,
 +                       static_cast<unsigned long long>(
 +                           ++_compressionSessionSequence)];
--
-+
+ 
    // Set source image buffer attributes. These attributes will be present on
    // buffers retrieved from the encoder's pixel buffer pool.
-@@ -699,14 +762,26 @@ NSUInteger GetMaxSampleRate(
+@@ -699,14 +792,26 @@ NSUInteger GetMaxSampleRate(
      (NSString *)kCVPixelBufferPixelFormatTypeKey : @(framePixelFormat),
    };
  
@@ -663,7 +769,7 @@ index 0fe7f05762..7efc78cb21 100644
  
  #endif
    OSStatus status = VTCompressionSessionCreate(
-@@ -726,6 +801,21 @@ NSUInteger GetMaxSampleRate(
+@@ -726,16 +831,48 @@ NSUInteger GetMaxSampleRate(
      return WEBRTC_VIDEO_CODEC_ERROR;
    }
  #if defined(WEBRTC_MAC) && !defined(WEBRTC_IOS)
@@ -685,7 +791,8 @@ index 0fe7f05762..7efc78cb21 100644
    CFBooleanRef hwaccl_enabled = nullptr;
    status = VTSessionCopyProperty(
        _compressionSession,
-@@ -734,8 +824,25 @@ NSUInteger GetMaxSampleRate(
+       kVTCompressionPropertyKey_UsingHardwareAcceleratedVideoEncoder,
+       nullptr,
        &hwaccl_enabled);
 -  if (status == noErr && (CFBooleanGetValue(hwaccl_enabled))) {
 +  if (status == noErr && hwaccl_enabled && CFBooleanGetValue(hwaccl_enabled)) {
@@ -697,7 +804,7 @@ index 0fe7f05762..7efc78cb21 100644
 +    RTC_LOG(LS_INFO) << "Compression session hardware acceleration property "
 +                        "unavailable: "
 +                     << status;
-   }
++  }
 +  if (hwaccl_enabled)
 +    CFRelease(hwaccl_enabled);
 +  void (^evidenceHandler)(NSDictionary<NSString *, id> *) =
@@ -710,10 +817,10 @@ index 0fe7f05762..7efc78cb21 100644
 +      @"config_hash" : _castTuningOptions[@"config_hash"] ?: @"",
 +      @"profile_mismatch" : @(NO),
 +    });
-+  }
+   }
  #endif
    [self configureCompressionSession];
-@@ -745,14 +852,16 @@ NSUInteger GetMaxSampleRate(
+@@ -745,14 +882,16 @@ NSUInteger GetMaxSampleRate(
  
  - (void)configureCompressionSession {
    RTC_DCHECK(_compressionSession);
@@ -733,7 +840,7 @@ index 0fe7f05762..7efc78cb21 100644
    [self setEncoderBitrateBps:_targetBitrateBps frameRate:_encoderFrameRate];
    // TODO(tkchin): Look at entropy mode and colorspace matrices.
    // TODO(tkchin): Investigate to see if there's any way to make this work.
-@@ -762,13 +871,33 @@ NSUInteger GetMaxSampleRate(
+@@ -762,13 +919,165 @@ NSUInteger GetMaxSampleRate(
    //     kVTCompressionPropertyKey_MaxFrameDelayCount,
    //     1);
  
@@ -746,7 +853,7 @@ index 0fe7f05762..7efc78cb21 100644
 +                         frameDelay.intValue);
 +  }
 +  NSNumber *maxQp = _castTuningOptions[@"max_qp"];
-+  if (maxQp) {
++  if (maxQp && !_castTuningOptions[@"encoder_runtime_qp_provider"]) {
 +    SetVTSessionProperty(_compressionSession,
 +                         kVTCompressionPropertyKey_MaxAllowedFrameQP,
 +                         maxQp.intValue);
@@ -767,10 +874,142 @@ index 0fe7f05762..7efc78cb21 100644
                         kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration,
 -                       240);
 +                       keyFrameSeconds);
++}
++
++- (int)resetCompressionSessionForRuntimeMaxQpIfNeeded:
++           (RTC_OBJC_TYPE(RTCVideoFrame) *)frame
++                                             didReset:(BOOL *)didReset {
++  RTC_DCHECK(didReset);
++  *didReset = NO;
++  NSDictionary<NSString *, id> *(^provider)(void) =
++      _castTuningOptions[@"encoder_runtime_qp_provider"];
++  if (!provider || _lastAppliedMaxQpGeneration == 0) {
++    return WEBRTC_VIDEO_CODEC_OK;
++  }
++
++  NSDictionary<NSString *, id> *request = provider();
++  id generationValue = request[@"generation"];
++  if (![generationValue isKindOfClass:[NSNumber class]]) {
++    return WEBRTC_VIDEO_CODEC_OK;
++  }
++  const uint64_t generation = [generationValue unsignedLongLongValue];
++  if (generation == _lastAppliedMaxQpGeneration) {
++    return WEBRTC_VIDEO_CODEC_OK;
++  }
++
++  RTC_LOG(LS_INFO) << "Resetting compression session for CastTuning max QP "
++                   << "generation " << generation;
++  const int status = [self
++      resetCompressionSessionWithPixelFormat:[self pixelFormatOfFrame:frame]];
++  if (status == WEBRTC_VIDEO_CODEC_OK) {
++    *didReset = YES;
++  }
++  return status;
++}
++
++- (NSDictionary<NSString *, id> *)applyPendingCastTuningMaxQp {
++  NSDictionary<NSString *, id> *(^provider)(void) =
++      _castTuningOptions[@"encoder_runtime_qp_provider"];
++  if (!provider || !_compressionSession) {
++    return @{};
++  }
++
++  NSDictionary<NSString *, id> *request = provider();
++  NSNumber *generation = request[@"generation"];
++  id requestedValue = request[@"requested_max_qp"];
++  if (!generation || ![requestedValue isKindOfClass:[NSNumber class]]) {
++    return request ?: @{};
++  }
++  const uint64_t requestedGeneration = generation.unsignedLongLongValue;
++  if (requestedGeneration == _lastAppliedMaxQpGeneration) {
++    return request;
++  }
++
++  NSNumber *requestedMaxQp = (NSNumber *)requestedValue;
++  NSString *eventType = @"encoder_runtime_qp_failed";
++  OSStatus status = kVTPropertyNotSupportedErr;
++  NSNumber *effectiveMaxQp = nil;
++
++  if (@available(macOS 12.0, iOS 15.0, *)) {
++    CFDictionaryRef supportedProperties = nullptr;
++    status = VTSessionCopySupportedPropertyDictionary(_compressionSession,
++                                                       &supportedProperties);
++    NSDictionary *propertyInfo = nil;
++    if (status == noErr && supportedProperties) {
++      propertyInfo = [(__bridge NSDictionary *)supportedProperties
++          objectForKey:(__bridge NSString *)
++                           kVTCompressionPropertyKey_MaxAllowedFrameQP];
++    }
++    NSString *readWriteStatus = propertyInfo[
++        (__bridge NSString *)kVTPropertyReadWriteStatusKey];
++    const BOOL supported = propertyInfo &&
++        [readWriteStatus
++            isEqualToString:(__bridge NSString *)
++                                kVTPropertyReadWriteStatus_ReadWrite];
++    if (supportedProperties) {
++      CFRelease(supportedProperties);
++    }
++
++    if (!supported) {
++      eventType = @"encoder_runtime_qp_unsupported";
++      status = kVTPropertyNotSupportedErr;
++    } else {
++      status = VTSessionSetProperty(
++          _compressionSession,
++          kVTCompressionPropertyKey_MaxAllowedFrameQP,
++          (__bridge CFNumberRef)requestedMaxQp);
++      if (status == noErr) {
++        CFTypeRef copiedValue = nullptr;
++        status = VTSessionCopyProperty(
++            _compressionSession,
++            kVTCompressionPropertyKey_MaxAllowedFrameQP,
++            nullptr,
++            &copiedValue);
++        if (status == noErr && copiedValue &&
++            CFGetTypeID(copiedValue) == CFNumberGetTypeID()) {
++          effectiveMaxQp = [(__bridge NSNumber *)copiedValue copy];
++          eventType = @"encoder_runtime_qp_applied";
++        } else if (status == noErr) {
++          status = kVTPropertyNotSupportedErr;
++        }
++        if (copiedValue) {
++          CFRelease(copiedValue);
++        }
++      }
++    }
++  } else {
++    eventType = @"encoder_runtime_qp_unsupported";
++  }
++
++  _lastAppliedMaxQpGeneration = requestedGeneration;
++  NSMutableDictionary<NSString *, id> *event = [@{
++    @"event_type" : eventType,
++    @"requested_max_qp" : requestedMaxQp,
++    @"generation" : generation,
++    @"os_status" : @(status),
++    @"encoder_id" : _encoderId ?: @"UNKNOWN",
++    @"encoder_session_id" : _encoderSessionId ?: @"UNKNOWN",
++  } mutableCopy];
++  if (effectiveMaxQp) {
++    event[@"effective_max_qp"] = effectiveMaxQp;
++  }
++  void (^resultHandler)(NSDictionary<NSString *, id> *) =
++      _castTuningOptions[@"encoder_runtime_qp_result_handler"];
++  if (resultHandler) {
++    resultHandler(event);
++  }
++  if (status == noErr) {
++    RTC_LOG(LS_INFO) << "CastTuning runtime max QP event: "
++                     << event.description.UTF8String;
++  } else {
++    RTC_LOG(LS_WARNING) << "CastTuning runtime max QP event: "
++                        << event.description.UTF8String;
++  }
++  return request;
  }
  
  - (void)destroyCompressionSession {
-@@ -804,34 +933,42 @@ NSUInteger GetMaxSampleRate(
+@@ -804,34 +1064,42 @@ NSUInteger GetMaxSampleRate(
                             frameRate);
      }
  
@@ -839,12 +1078,22 @@ index 0fe7f05762..7efc78cb21 100644
 +                          << status;
 +      }
      }
--
-+
+ 
      _encoderBitrateBps = bitrateBps;
-@@ -874,6 +1011,41 @@ NSUInteger GetMaxSampleRate(
--
-+
+@@ -848,7 +1165,10 @@ NSUInteger GetMaxSampleRate(
+                  height:(int32_t)height
+            renderTimeMs:(int64_t)renderTimeMs
+               timestamp:(uint32_t)timestamp
+-               rotation:(RTCVideoRotation)rotation {
++               rotation:(RTCVideoRotation)rotation
++        maxQpGeneration:(uint64_t)maxQpGeneration
++         requestedMaxQp:(int)requestedMaxQp
++         encoderSessionId:(NSString *)encoderSessionId {
+   RTCVideoEncoderCallback callback = _callback;
+   if (!callback) {
+     return;
+@@ -874,6 +1144,41 @@ NSUInteger GetMaxSampleRate(
+ 
    if (isKeyframe) {
      RTC_LOG(LS_INFO) << "Generated keyframe";
 +    if (!_profileEvidenceReported) {
@@ -861,7 +1110,7 @@ index 0fe7f05762..7efc78cb21 100644
 +              expected,
 +              actual,
 +              _encoderId ?: @"UNKNOWN",
-+              _encoderSessionId,
++              encoderSessionId,
 +              _castTuningOptions[@"config_hash"] ?: @"",
 +              mismatch ? @"true" : @"false"];
 +      if (mismatch)
@@ -876,13 +1125,36 @@ index 0fe7f05762..7efc78cb21 100644
 +          @"expected_profile" : expected,
 +          @"actual_profile" : actual,
 +          @"encoder_id" : _encoderId ?: @"UNKNOWN",
-+          @"encoder_session_id" : _encoderSessionId,
++          @"encoder_session_id" : encoderSessionId,
 +          @"config_hash" : _castTuningOptions[@"config_hash"] ?: @"",
 +          @"profile_mismatch" : @(mismatch),
 +        });
 +      }
 +    }
    }
--
-+
+ 
    __block std::unique_ptr<webrtc::Buffer> buffer =
+@@ -908,6 +1213,23 @@ NSUInteger GetMaxSampleRate(
+   _h264BitstreamParser.ParseBitstream(*buffer);
+   frame.qp = @(_h264BitstreamParser.GetLastSliceQp().value_or(-1));
+ 
++  if (isKeyframe && maxQpGeneration > 0) {
++    void (^resultHandler)(NSDictionary<NSString *, id> *) =
++        _castTuningOptions[@"encoder_runtime_qp_result_handler"];
++    if (resultHandler) {
++      resultHandler(@{
++        @"event_type" : @"encoder_qp_sample",
++        @"requested_max_qp" : @(requestedMaxQp),
++        @"generation" : @(maxQpGeneration),
++        @"actual_qp" : frame.qp,
++        @"key_frame" : @(YES),
++        @"encoded_bytes" : @(frame.buffer.length),
++        @"encoder_id" : _encoderId ?: @"UNKNOWN",
++        @"encoder_session_id" : encoderSessionId ?: @"UNKNOWN",
++      });
++    }
++  }
++
+   BOOL res = callback(frame, codecSpecificInfo);
+   if (!res) {
+     RTC_LOG(LS_ERROR) << "Encode callback failed";

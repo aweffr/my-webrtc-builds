@@ -140,6 +140,8 @@ BackendState MergeState(const BackendState& current,
     result.jitter_minimum_ms = *patch.jitter_minimum_ms;
   if (patch.stale_decoded_frame_ms)
     result.stale_decoded_frame_ms = *patch.stale_decoded_frame_ms;
+  if (patch.max_qp)
+    result.max_qp = *patch.max_qp;
   return result;
 }
 
@@ -163,6 +165,8 @@ void MergeConfig(CastTuningConfig* config, const CastTuningLivePatch& patch) {
     config->receiver.jitter_minimum_ms = patch.jitter_minimum_ms;
   if (patch.stale_decoded_frame_ms)
     config->receiver.stale_decoded_frame_ms = patch.stale_decoded_frame_ms;
+  if (patch.max_qp)
+    config->encoder.max_qp = patch.max_qp;
 }
 
 }  // namespace
@@ -256,6 +260,25 @@ bool CastTuningController::RollBackSenderAndBitrate(
   return success;
 }
 
+bool CastTuningController::RollBackEncoderSenderAndBitrate(
+    const BackendState& old_state,
+    CastApplyResult* result) {
+  std::string rollback_error;
+  bool success = true;
+  if (!backend_->ApplyEncoder(old_state, &rollback_error)) {
+    result->warnings.push_back(rollback_error);
+    success = false;
+  }
+  if (!RollBackSenderAndBitrate(old_state, result))
+    success = false;
+  if (!success) {
+    result->status = ApplyStatus::kSessionRecreateRequired;
+    result->required_scope = ApplyScope::kSession;
+    snapshot_.recreate_required = true;
+  }
+  return success;
+}
+
 CastApplyResult CastTuningController::ApplyLivePatch(
     const CastTuningLivePatch& patch) {
   const ApplyScope scope = patch.RequiredScope();
@@ -290,9 +313,16 @@ CastApplyResult CastTuningController::ApplyLivePatch(
       observer_->OnConfigRejected(result);
     return result;
   }
-  if (!backend_->ApplyReceiver(new_state, &error)) {
+  if (!backend_->ApplyEncoder(new_state, &error)) {
     result.error = std::move(error);
     RollBackSenderAndBitrate(old_state, &result);
+    if (observer_)
+      observer_->OnConfigRejected(result);
+    return result;
+  }
+  if (!backend_->ApplyReceiver(new_state, &error)) {
+    result.error = std::move(error);
+    RollBackEncoderSenderAndBitrate(old_state, &result);
     if (observer_)
       observer_->OnConfigRejected(result);
     return result;

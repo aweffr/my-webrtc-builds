@@ -21,9 +21,17 @@ class CastVideoSourceAdapter {
                            std::string* error) = 0;
 };
 
+class CastEncoderRuntimeAdapter {
+ public:
+  virtual ~CastEncoderRuntimeAdapter() = default;
+  virtual bool ApplyMaxQp(int max_qp, std::string* error) = 0;
+};
+
 class WebRtcCastTuningBackend final : public CastTuningBackend {
  public:
-  explicit WebRtcCastTuningBackend(const CastTuningConfig& config);
+  explicit WebRtcCastTuningBackend(
+      const CastTuningConfig& config,
+      CastEncoderRuntimeAdapter* encoder_runtime_adapter = nullptr);
 
   void AttachPeerConnection(
       scoped_refptr<PeerConnectionInterface> peer_connection);
@@ -35,6 +43,7 @@ class WebRtcCastTuningBackend final : public CastTuningBackend {
   BackendState CaptureState() const override;
   bool ApplyBitrate(const BackendState& state, std::string* error) override;
   bool ApplySender(const BackendState& state, std::string* error) override;
+  bool ApplyEncoder(const BackendState& state, std::string* error) override;
   bool ApplyReceiver(const BackendState& state, std::string* error) override;
   RTCError ForceKeyFrame();
 
@@ -53,6 +62,7 @@ class WebRtcCastTuningBackend final : public CastTuningBackend {
   scoped_refptr<VideoTrackInterface> track_;
   scoped_refptr<RtpReceiverInterface> receiver_;
   CastVideoSourceAdapter* source_adapter_ = nullptr;
+  CastEncoderRuntimeAdapter* encoder_runtime_adapter_ = nullptr;
 };
 
 }  // namespace webrtc::cast_tuning

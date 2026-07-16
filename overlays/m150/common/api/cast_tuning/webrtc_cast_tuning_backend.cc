@@ -52,7 +52,9 @@ VideoTrackInterface::ContentHint ToContentHint(ContentMode mode) {
 
 }  // namespace
 
-WebRtcCastTuningBackend::WebRtcCastTuningBackend(const CastTuningConfig& config)
+WebRtcCastTuningBackend::WebRtcCastTuningBackend(
+    const CastTuningConfig& config,
+    CastEncoderRuntimeAdapter* encoder_runtime_adapter)
     : has_initial_bitrate_config_(config.sender.min_bitrate_bps ||
                                   config.sender.start_bitrate_bps ||
                                   config.sender.max_bitrate_bps),
@@ -61,7 +63,8 @@ WebRtcCastTuningBackend::WebRtcCastTuningBackend(const CastTuningConfig& config)
           config.sender.max_height || config.sender.max_fps ||
           config.sender.content_mode || config.sender.degradation_preference ||
           config.sender.network_priority),
-      has_initial_receiver_config_(config.receiver.jitter_minimum_ms) {
+      has_initial_receiver_config_(config.receiver.jitter_minimum_ms),
+      encoder_runtime_adapter_(encoder_runtime_adapter) {
   state_.min_bitrate_bps = config.sender.min_bitrate_bps.value_or(0);
   state_.start_bitrate_bps = config.sender.start_bitrate_bps.value_or(0);
   state_.max_bitrate_bps = config.sender.max_bitrate_bps.value_or(0);
@@ -77,6 +80,7 @@ WebRtcCastTuningBackend::WebRtcCastTuningBackend(const CastTuningConfig& config)
   state_.jitter_minimum_ms = config.receiver.jitter_minimum_ms.value_or(0);
   state_.stale_decoded_frame_ms =
       config.receiver.stale_decoded_frame_ms.value_or(0);
+  state_.max_qp = config.encoder.max_qp.value_or(0);
 }
 
 void WebRtcCastTuningBackend::AttachPeerConnection(
@@ -202,7 +206,26 @@ bool WebRtcCastTuningBackend::ApplySender(const BackendState& state,
                                     state.max_fps, error)) {
     return false;
   }
-  state_ = state;
+  state_.max_width = state.max_width;
+  state_.max_height = state.max_height;
+  state_.max_fps = state.max_fps;
+  state_.content_mode = state.content_mode;
+  state_.degradation_preference = state.degradation_preference;
+  state_.network_priority = state.network_priority;
+  return true;
+}
+
+bool WebRtcCastTuningBackend::ApplyEncoder(const BackendState& state,
+                                           std::string* error) {
+  if (state.max_qp == state_.max_qp)
+    return true;
+  if (!encoder_runtime_adapter_) {
+    *error = "encoder runtime control is unsupported";
+    return false;
+  }
+  if (!encoder_runtime_adapter_->ApplyMaxQp(state.max_qp, error))
+    return false;
+  state_.max_qp = state.max_qp;
   return true;
 }
 

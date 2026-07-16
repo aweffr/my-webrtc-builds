@@ -59,12 +59,18 @@ class TemporaryTestDirectory {
 class FakeBackend final : public webrtc::cast_tuning::CastTuningBackend {
  public:
   bool fail_sender = false;
+  bool fail_encoder = false;
   bool fail_rollback = false;
   int bitrate = 6000000;
   int fps = 15;
+  int max_qp = 32;
 
   webrtc::cast_tuning::BackendState CaptureState() const override {
-    return {.max_bitrate_bps = bitrate, .max_fps = fps};
+    return {
+        .max_bitrate_bps = bitrate,
+        .max_fps = fps,
+        .max_qp = max_qp,
+    };
   }
 
   bool ApplyBitrate(const webrtc::cast_tuning::BackendState& state,
@@ -84,6 +90,16 @@ class FakeBackend final : public webrtc::cast_tuning::CastTuningBackend {
       return false;
     }
     fps = state.max_fps;
+    return true;
+  }
+
+  bool ApplyEncoder(const webrtc::cast_tuning::BackendState& state,
+                    std::string* error) override {
+    if (fail_encoder) {
+      *error = "encoder failed";
+      return false;
+    }
+    max_qp = state.max_qp;
     return true;
   }
 
@@ -183,6 +199,9 @@ int main() {
   live.max_bitrate_bps = 4000000;
   Expect(live.RequiredScope() == ApplyScope::kLive,
          "max bitrate should be LIVE");
+  live.max_qp = 24;
+  Expect(live.RequiredScope() == ApplyScope::kLive,
+         "max QP should be LIVE");
   live.start_bitrate_bps = 2000000;
   Expect(live.RequiredScope() == ApplyScope::kSession,
          "start bitrate should require SESSION");
@@ -202,11 +221,15 @@ int main() {
   CastTuningLivePatch successful_patch;
   successful_patch.max_bitrate_bps = 4000000;
   successful_patch.max_fps = 20;
+  successful_patch.max_qp = 24;
   const auto applied = controller.ApplyLivePatch(successful_patch);
   Expect(applied.status == webrtc::cast_tuning::ApplyStatus::kApplied,
          "valid LIVE patch should apply");
-  Expect(backend.bitrate == 4000000 && backend.fps == 20,
+  Expect(backend.bitrate == 4000000 && backend.fps == 20 &&
+             backend.max_qp == 24,
          "backend should receive LIVE values");
+  Expect(controller.config().encoder.max_qp == 24,
+         "effective config should retain live max QP");
   Expect(controller.snapshot().revision == 1,
          "successful patch increments revision");
 
@@ -222,6 +245,25 @@ int main() {
   Expect(controller.snapshot().revision == 1,
          "failed patch must not increment revision");
 
+  backend.fail_sender = false;
+  backend.fail_encoder = true;
+  CastTuningLivePatch failing_encoder_patch;
+  failing_encoder_patch.max_bitrate_bps = 3500000;
+  failing_encoder_patch.max_fps = 18;
+  failing_encoder_patch.max_qp = 22;
+  const auto encoder_rejected =
+      controller.ApplyLivePatch(failing_encoder_patch);
+  Expect(encoder_rejected.status ==
+             webrtc::cast_tuning::ApplyStatus::kRejected,
+         "failed encoder update should reject patch");
+  Expect(backend.bitrate == 4000000 && backend.fps == 20 &&
+             backend.max_qp == 24,
+         "failed encoder update must roll back sender and bitrate state");
+  Expect(controller.snapshot().revision == 1,
+         "failed encoder patch must not increment revision");
+
+  backend.fail_sender = true;
+  backend.fail_encoder = false;
   backend.fail_rollback = true;
   const auto degraded = controller.ApplyLivePatch(failing_patch);
   Expect(degraded.status ==

@@ -37,6 +37,14 @@ NSError *CastError(NSString *message) {
 - (NSDictionary<NSString *, id> *)snapshot;
 @end
 
+@interface RTCCastTuningEncoderRuntimeState : NSObject
+- (instancetype)initWithMaxQp:(nullable NSNumber *)maxQp;
+- (BOOL)requestMaxQp:(NSInteger)maxQp error:(NSString **)error;
+- (NSDictionary<NSString *, id> *)requestSnapshot;
+- (void)recordEncoderEvent:(NSDictionary<NSString *, id> *)event;
+- (NSDictionary<NSString *, id> *)snapshot;
+@end
+
 @implementation RTCCastTuningEncoderEvidence {
   NSLock *_lock;
   NSDictionary<NSString *, id> *_latest;
@@ -72,7 +80,9 @@ NSError *CastError(NSString *message) {
 
 - (void)recordEvent:(NSDictionary<NSString *, id> *)event {
   [_lock lock];
-  _latest = [event copy];
+  NSMutableDictionary<NSString *, id> *latest = [_latest mutableCopy];
+  [latest addEntriesFromDictionary:event];
+  _latest = latest;
   _profileMismatch =
       _profileMismatch || [event[@"profile_mismatch"] boolValue];
   if (_telemetryWriter) {
@@ -109,7 +119,158 @@ NSError *CastError(NSString *message) {
 
 @end
 
+@implementation RTCCastTuningEncoderRuntimeState {
+  NSLock *_lock;
+  NSNumber *_requestedMaxQp;
+  NSNumber *_effectiveMaxQp;
+  NSString *_applyState;
+  uint64_t _generation;
+  NSNumber *_osStatus;
+  NSString *_appliedEncoderSessionId;
+  NSNumber *_lastEncodedQp;
+  NSNumber *_lastKeyFrameQp;
+  NSNumber *_lastKeyFrameBytes;
+  uint64_t _lastQpSampleGeneration;
+  NSString *_lastQpSampleEncoderSessionId;
+}
+
+- (instancetype)initWithMaxQp:(NSNumber *)maxQp {
+  if ((self = [super init])) {
+    _lock = [[NSLock alloc] init];
+    _requestedMaxQp = [maxQp copy];
+    _applyState = maxQp ? @"pending" : @"not_requested";
+    _generation = maxQp ? 1 : 0;
+  }
+  return self;
+}
+
+- (BOOL)requestMaxQp:(NSInteger)maxQp error:(NSString **)error {
+  if (maxQp < 0 || maxQp > 51) {
+    if (error)
+      *error = @"max QP must be between 0 and 51";
+    return NO;
+  }
+  [_lock lock];
+  _requestedMaxQp = @(maxQp);
+  _effectiveMaxQp = nil;
+  _applyState = @"pending";
+  _osStatus = nil;
+  _appliedEncoderSessionId = nil;
+  _lastEncodedQp = nil;
+  _lastKeyFrameQp = nil;
+  _lastKeyFrameBytes = nil;
+  _lastQpSampleGeneration = 0;
+  _lastQpSampleEncoderSessionId = nil;
+  ++_generation;
+  [_lock unlock];
+  return YES;
+}
+
+- (NSDictionary<NSString *, id> *)requestSnapshot {
+  [_lock lock];
+  NSDictionary<NSString *, id> *snapshot = @{
+    @"generation" : @(_generation),
+    @"requested_max_qp" : _requestedMaxQp ?: [NSNull null],
+  };
+  [_lock unlock];
+  return snapshot;
+}
+
+- (void)recordEncoderEvent:(NSDictionary<NSString *, id> *)event {
+  NSString *eventType = event[@"event_type"];
+  [_lock lock];
+  NSNumber *eventGeneration = event[@"generation"];
+  if (!eventGeneration || eventGeneration.unsignedLongLongValue != _generation) {
+    [_lock unlock];
+    return;
+  }
+  if ([eventType isEqualToString:@"encoder_runtime_qp_applied"]) {
+    NSString *eventEncoderSessionId = event[@"encoder_session_id"];
+    if (![eventEncoderSessionId isKindOfClass:[NSString class]] ||
+        eventEncoderSessionId.length == 0) {
+      [_lock unlock];
+      return;
+    }
+    _effectiveMaxQp = event[@"effective_max_qp"];
+    _applyState = @"applied";
+    _osStatus = event[@"os_status"];
+    _appliedEncoderSessionId = [eventEncoderSessionId copy];
+  } else if ([eventType isEqualToString:@"encoder_runtime_qp_unsupported"]) {
+    _applyState = @"unsupported";
+    _osStatus = event[@"os_status"];
+    _appliedEncoderSessionId = nil;
+  } else if ([eventType isEqualToString:@"encoder_runtime_qp_failed"]) {
+    _applyState = @"failed";
+    _osStatus = event[@"os_status"];
+    _appliedEncoderSessionId = nil;
+  } else if ([eventType isEqualToString:@"encoder_qp_sample"]) {
+    NSString *eventEncoderSessionId = event[@"encoder_session_id"];
+    if (![_applyState isEqualToString:@"applied"] ||
+        ![eventEncoderSessionId isKindOfClass:[NSString class]] ||
+        ![eventEncoderSessionId isEqualToString:_appliedEncoderSessionId]) {
+      [_lock unlock];
+      return;
+    }
+    _lastEncodedQp = event[@"actual_qp"];
+    _lastQpSampleGeneration = _generation;
+    _lastQpSampleEncoderSessionId = [eventEncoderSessionId copy];
+    if ([event[@"key_frame"] boolValue]) {
+      _lastKeyFrameQp = event[@"actual_qp"];
+      _lastKeyFrameBytes = event[@"encoded_bytes"];
+    }
+  }
+  [_lock unlock];
+}
+
+- (NSDictionary<NSString *, id> *)snapshot {
+  [_lock lock];
+  NSDictionary<NSString *, id> *snapshot = @{
+    @"requested_max_qp" : _requestedMaxQp ?: [NSNull null],
+    @"effective_max_qp" : _effectiveMaxQp ?: [NSNull null],
+    @"apply_state" : _applyState,
+    @"generation" : @(_generation),
+    @"os_status" : _osStatus ?: [NSNull null],
+    @"applied_encoder_session_id" :
+        _appliedEncoderSessionId ?: [NSNull null],
+    @"last_encoded_qp" : _lastEncodedQp ?: [NSNull null],
+    @"last_key_frame_qp" : _lastKeyFrameQp ?: [NSNull null],
+    @"last_key_frame_bytes" : _lastKeyFrameBytes ?: [NSNull null],
+    @"last_qp_sample_generation" : @(_lastQpSampleGeneration),
+    @"last_qp_sample_encoder_session_id" :
+        _lastQpSampleEncoderSessionId ?: [NSNull null],
+  };
+  [_lock unlock];
+  return snapshot;
+}
+
+@end
+
 namespace {
+
+class ObjCEncoderRuntimeAdapter final
+    : public webrtc::cast_tuning::CastEncoderRuntimeAdapter {
+ public:
+  explicit ObjCEncoderRuntimeAdapter(
+      RTCCastTuningEncoderRuntimeState *runtime_state)
+      : runtime_state_(runtime_state) {}
+
+  bool ApplyMaxQp(int max_qp, std::string *error) override {
+    RTCCastTuningEncoderRuntimeState *runtimeState = runtime_state_;
+    if (!runtimeState) {
+      *error = "encoder runtime state was released";
+      return false;
+    }
+    NSString *objcError = nil;
+    if (![runtimeState requestMaxQp:max_qp error:&objcError]) {
+      *error = objcError.UTF8String ?: "invalid max QP";
+      return false;
+    }
+    return true;
+  }
+
+ private:
+  __weak RTCCastTuningEncoderRuntimeState *runtime_state_;
+};
 
 NSDictionary<NSString *, id> *EncoderOptions(
     const webrtc::cast_tuning::CastTuningConfig &config) {
@@ -192,10 +353,12 @@ class ObjCVideoSourceAdapter final
 @interface RTCCastTuningConfiguration () {
   std::optional<webrtc::cast_tuning::CastTuningConfig> _nativeConfig;
   RTCCastTuningEncoderEvidence *_encoderEvidence;
+  RTCCastTuningEncoderRuntimeState *_encoderRuntimeState;
   std::shared_ptr<webrtc::cast_tuning::CastTelemetryWriter> _telemetryWriter;
 }
 - (const webrtc::cast_tuning::CastTuningConfig &)nativeConfig;
 - (RTCCastTuningEncoderEvidence *)encoderEvidence;
+- (RTCCastTuningEncoderRuntimeState *)encoderRuntimeState;
 - (std::shared_ptr<webrtc::cast_tuning::CastTelemetryWriter>)telemetryWriter;
 @end
 
@@ -237,6 +400,11 @@ class ObjCVideoSourceAdapter final
   result->_encoderEvidence =
       [[RTCCastTuningEncoderEvidence alloc]
           initWithTelemetryWriter:result->_telemetryWriter];
+  NSNumber *initialMaxQp = result->_nativeConfig->encoder.max_qp
+      ? @(result->_nativeConfig->encoder.max_qp.value())
+      : nil;
+  result->_encoderRuntimeState =
+      [[RTCCastTuningEncoderRuntimeState alloc] initWithMaxQp:initialMaxQp];
   return result;
 }
 
@@ -263,6 +431,10 @@ class ObjCVideoSourceAdapter final
 
 - (RTCCastTuningEncoderEvidence *)encoderEvidence {
   return _encoderEvidence;
+}
+
+- (RTCCastTuningEncoderRuntimeState *)encoderRuntimeState {
+  return _encoderRuntimeState;
 }
 
 - (std::shared_ptr<webrtc::cast_tuning::CastTelemetryWriter>)telemetryWriter {
@@ -329,6 +501,17 @@ class ObjCVideoSourceAdapter final
 @property(nonatomic, nullable) NSString *actualH264Profile;
 @property(nonatomic, nullable) NSString *videoToolboxEncoderId;
 @property(nonatomic, nullable) NSString *encoderSessionId;
+@property(nonatomic, nullable) NSNumber *requestedMaxQp;
+@property(nonatomic, nullable) NSNumber *effectiveMaxQp;
+@property(nonatomic) NSString *maxQpApplyState;
+@property(nonatomic) uint64_t maxQpGeneration;
+@property(nonatomic, nullable) NSNumber *maxQpOSStatus;
+@property(nonatomic, nullable) NSString *maxQpAppliedEncoderSessionId;
+@property(nonatomic, nullable) NSNumber *lastEncodedQp;
+@property(nonatomic, nullable) NSNumber *lastKeyFrameQp;
+@property(nonatomic, nullable) NSNumber *lastKeyFrameBytes;
+@property(nonatomic) uint64_t lastQpSampleGeneration;
+@property(nonatomic, nullable) NSString *lastQpSampleEncoderSessionId;
 @end
 
 @implementation RTCCastTuningSnapshot
@@ -439,9 +622,19 @@ class ObjCVideoSourceAdapter final
       [EncoderOptions(configuration.nativeConfig) mutableCopy];
   options[@"config_hash"] = configuration.effectiveConfigHash;
   RTCCastTuningEncoderEvidence *evidence = configuration.encoderEvidence;
+  RTCCastTuningEncoderRuntimeState *runtimeState =
+      configuration.encoderRuntimeState;
   [evidence setConfigHash:configuration.effectiveConfigHash];
   options[@"encoder_evidence_handler"] =
       [^(NSDictionary<NSString *, id> *event) {
+        [evidence recordEvent:event];
+      } copy];
+  options[@"encoder_runtime_qp_provider"] = [^NSDictionary *{
+    return [runtimeState requestSnapshot];
+  } copy];
+  options[@"encoder_runtime_qp_result_handler"] =
+      [^(NSDictionary<NSString *, id> *event) {
+        [runtimeState recordEncoderEvent:event];
         [evidence recordEvent:event];
       } copy];
   id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)> tuned =
@@ -463,17 +656,22 @@ class ObjCVideoSourceAdapter final
 @end
 
 @implementation RTCCastTuningController {
+  std::unique_ptr<ObjCEncoderRuntimeAdapter> _encoderRuntimeAdapter;
   std::unique_ptr<webrtc::cast_tuning::WebRtcCastTuningBackend> _backend;
   std::unique_ptr<webrtc::cast_tuning::CastTuningController> _controller;
   std::unique_ptr<ObjCVideoSourceAdapter> _sourceAdapter;
   RTCCastTuningEncoderEvidence *_encoderEvidence;
+  RTCCastTuningEncoderRuntimeState *_encoderRuntimeState;
 }
 
 - (instancetype)initWithConfiguration:
     (RTCCastTuningConfiguration *)configuration {
   if ((self = [super init])) {
+    _encoderRuntimeState = configuration.encoderRuntimeState;
+    _encoderRuntimeAdapter =
+        std::make_unique<ObjCEncoderRuntimeAdapter>(_encoderRuntimeState);
     _backend = std::make_unique<webrtc::cast_tuning::WebRtcCastTuningBackend>(
-        configuration.nativeConfig);
+        configuration.nativeConfig, _encoderRuntimeAdapter.get());
     _controller = std::make_unique<webrtc::cast_tuning::CastTuningController>(
         configuration.nativeConfig, _backend.get(), [configuration telemetryWriter]);
     _encoderEvidence = configuration.encoderEvidence;
@@ -513,6 +711,7 @@ class ObjCVideoSourceAdapter final
   RTC_CAST_PATCH_INT(maxBitrateBps, max_bitrate_bps);
   RTC_CAST_PATCH_INT(jitterMinimumMs, jitter_minimum_ms);
   RTC_CAST_PATCH_INT(staleDecodedFrameMs, stale_decoded_frame_ms);
+  RTC_CAST_PATCH_INT(maxQp, max_qp);
 #undef RTC_CAST_PATCH_INT
   if ([patch.contentMode isEqualToString:@"TEXT"])
     native.content_mode = webrtc::cast_tuning::ContentMode::kText;
@@ -569,6 +768,31 @@ class ObjCVideoSourceAdapter final
   snapshot.actualH264Profile = evidence[@"actual_profile"];
   snapshot.videoToolboxEncoderId = evidence[@"encoder_id"];
   snapshot.encoderSessionId = evidence[@"encoder_session_id"];
+  NSDictionary<NSString *, id> *runtime = [_encoderRuntimeState snapshot];
+#define RTC_CAST_NULLABLE_NUMBER(property, key)                     \
+  snapshot.property = [runtime[key] isKindOfClass:[NSNumber class]] \
+      ? runtime[key]                                                \
+      : nil
+  RTC_CAST_NULLABLE_NUMBER(requestedMaxQp, @"requested_max_qp");
+  RTC_CAST_NULLABLE_NUMBER(effectiveMaxQp, @"effective_max_qp");
+  RTC_CAST_NULLABLE_NUMBER(maxQpOSStatus, @"os_status");
+  RTC_CAST_NULLABLE_NUMBER(lastEncodedQp, @"last_encoded_qp");
+  RTC_CAST_NULLABLE_NUMBER(lastKeyFrameQp, @"last_key_frame_qp");
+  RTC_CAST_NULLABLE_NUMBER(lastKeyFrameBytes, @"last_key_frame_bytes");
+#undef RTC_CAST_NULLABLE_NUMBER
+  snapshot.maxQpApplyState = runtime[@"apply_state"];
+  snapshot.maxQpGeneration = [runtime[@"generation"] unsignedLongLongValue];
+  snapshot.maxQpAppliedEncoderSessionId =
+      [runtime[@"applied_encoder_session_id"] isKindOfClass:[NSString class]]
+          ? runtime[@"applied_encoder_session_id"]
+          : nil;
+  snapshot.lastQpSampleGeneration =
+      [runtime[@"last_qp_sample_generation"] unsignedLongLongValue];
+  snapshot.lastQpSampleEncoderSessionId =
+      [runtime[@"last_qp_sample_encoder_session_id"]
+              isKindOfClass:[NSString class]]
+          ? runtime[@"last_qp_sample_encoder_session_id"]
+          : nil;
   return snapshot;
 }
 

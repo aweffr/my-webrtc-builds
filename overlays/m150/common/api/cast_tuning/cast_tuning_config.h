@@ -148,6 +148,7 @@ struct CastTuningLivePatch {
   std::optional<DegradationPreference> degradation_preference;
   std::optional<int> jitter_minimum_ms;
   std::optional<int> stale_decoded_frame_ms;
+  std::optional<int> max_qp;
   std::optional<double> pacing_factor;
   std::optional<int> periodic_idr_seconds;
   bool reset_bwe_estimate = false;
