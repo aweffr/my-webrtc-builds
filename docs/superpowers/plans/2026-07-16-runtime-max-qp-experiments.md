@@ -129,7 +129,7 @@ python3 -m unittest discover -s tests -v
 
 Expected: targeted test and all repository tests pass.
 
-- [ ] **Step 5: Commit the common contract**
+- [x] **Step 5: Commit the common contract**
 
 ```bash
 git add overlays/m150/common/api/cast_tuning
@@ -143,7 +143,7 @@ git commit -m "feat: add live max qp tuning contract"
 - Modify: `overlays/m150/macos/sdk/objc/api/peerconnection/RTCCastTuning.mm`
 - Modify: `tests/test_cast_tuning_overlay.py`
 
-- [ ] **Step 1: Write Objective-C overlay contract assertions**
+- [x] **Step 1: Write Objective-C overlay contract assertions**
 
 Add a Python test that requires the public API and private per-factory wiring:
 
@@ -160,7 +160,7 @@ def test_macos_exposes_per_factory_live_max_qp_control(self) -> None:
     self.assertIn("lastEncodedQp", header)
 ```
 
-- [ ] **Step 2: Run the overlay assertion and verify RED**
+- [x] **Step 2: Run the overlay assertion and verify RED**
 
 Run:
 
@@ -170,7 +170,7 @@ python3 -m unittest tests.test_cast_tuning_overlay.CastTuningNativeContractTests
 
 Expected: failure because the public property and runtime state are absent.
 
-- [ ] **Step 3: Implement the runtime state and Objective-C bridge**
+- [x] **Step 3: Implement the runtime state and Objective-C bridge**
 
 Expose the additive API:
 
@@ -209,7 +209,7 @@ Map `patch.maxQp` into native `max_qp`, and copy runtime evidence into
 `RTCCastTuningSnapshot`. Make encoder evidence accumulate stable fields rather
 than replacing the complete snapshot on every event.
 
-- [ ] **Step 4: Verify the Objective-C contract GREEN**
+- [x] **Step 4: Verify the Objective-C contract GREEN**
 
 Run:
 
@@ -220,7 +220,7 @@ python3 -m unittest discover -s tests -v
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Commit the macOS API bridge**
+- [x] **Step 5: Commit the macOS API bridge**
 
 ```bash
 git add overlays/m150/macos tests/test_cast_tuning_overlay.py
@@ -234,7 +234,7 @@ git commit -m "feat: expose macos runtime max qp control"
 - Modify: `patches/m150/cast_tuning_hooks.patch`
 - Modify: `patches/m150/SOURCES.md`
 
-- [ ] **Step 1: Strengthen the transformed-source test**
+- [x] **Step 1: Strengthen the transformed-source test**
 
 Change the exact-source test to apply the H.264 hunk in a temporary checkout,
 then assert the transformed file contains all runtime behavior:
@@ -253,7 +253,7 @@ self.assertIn("encoder_runtime_qp_result_handler", transformed)
 self.assertIn('frame.qp = @(_h264BitstreamParser.GetLastSliceQp()', transformed)
 ```
 
-- [ ] **Step 2: Run the transformed-source test and verify RED**
+- [x] **Step 2: Run the transformed-source test and verify RED**
 
 Run:
 
@@ -263,7 +263,7 @@ python3 -m unittest tests.test_cast_tuning_overlay.CastTuningNativeContractTests
 
 Expected: failure because the current patch has only session-start max QP.
 
-- [ ] **Step 3: Implement the exact M150 encoder hook**
+- [x] **Step 3: Implement the exact M150 encoder hook**
 
 In `RTCVideoEncoderH264.mm`, add `_lastAppliedMaxQpGeneration`. Before the
 first pixel-buffer operation in `encode:codecSpecificInfo:frameTypes:`, read
@@ -285,12 +285,14 @@ then call `VTSessionCopyProperty` for readback. Emit one of
 OSStatus, encoder ID and encoder-session ID.
 
 After the bitstream parser assigns `frame.qp`, emit
-`encoder_qp_sample` for the first frame of a newly applied generation and for
-every keyframe, including actual QP, keyframe flag and encoded bytes. Reset
+`encoder_qp_sample` for keyframes, including actual QP, keyframe flag and
+encoded bytes. The reference sender forces a keyframe immediately after each
+static policy transition, so this provides the required generation-bound
+experiment evidence without per-frame telemetry. Reset
 the locally applied generation when a compression session is destroyed, and
 apply the current requested value while configuring the replacement session.
 
-- [ ] **Step 4: Verify patch applicability and all tests GREEN**
+- [x] **Step 4: Verify patch applicability and all tests GREEN**
 
 Run:
 
@@ -303,7 +305,7 @@ python3 -m unittest discover -s tests -v
 Expected: the patch applies cleanly to pinned commit
 `1f975dfd761af6e5d76d28333191973b258d82a8`; all tests pass.
 
-- [ ] **Step 5: Commit the encoder hook**
+- [x] **Step 5: Commit the encoder hook**
 
 ```bash
 git add patches/m150 tests/test_cast_tuning_overlay.py

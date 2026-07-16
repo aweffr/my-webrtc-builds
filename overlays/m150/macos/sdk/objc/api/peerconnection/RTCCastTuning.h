@@ -58,6 +58,7 @@ RTC_OBJC_EXPORT
 @property(nonatomic, nullable) NSNumber *maxBitrateBps;
 @property(nonatomic, nullable) NSNumber *jitterMinimumMs;
 @property(nonatomic, nullable) NSNumber *staleDecodedFrameMs;
+@property(nonatomic, nullable) NSNumber *maxQp;
 @property(nonatomic, nullable) NSString *contentMode;
 @property(nonatomic, nullable) NSString *degradationPreference;
 
@@ -86,6 +87,14 @@ RTC_OBJC_EXPORT
 @property(nonatomic, readonly, nullable) NSString *actualH264Profile;
 @property(nonatomic, readonly, nullable) NSString *videoToolboxEncoderId;
 @property(nonatomic, readonly, nullable) NSString *encoderSessionId;
+@property(nonatomic, readonly, nullable) NSNumber *requestedMaxQp;
+@property(nonatomic, readonly, nullable) NSNumber *effectiveMaxQp;
+@property(nonatomic, readonly) NSString *maxQpApplyState;
+@property(nonatomic, readonly) uint64_t maxQpGeneration;
+@property(nonatomic, readonly, nullable) NSNumber *maxQpOSStatus;
+@property(nonatomic, readonly, nullable) NSNumber *lastEncodedQp;
+@property(nonatomic, readonly, nullable) NSNumber *lastKeyFrameQp;
+@property(nonatomic, readonly, nullable) NSNumber *lastKeyFrameBytes;
 
 @end
 
