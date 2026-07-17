@@ -149,6 +149,21 @@ index 3e1e274..1e985f8 100644
 
    // Update the bitrate if needed.
    [self setBitrateBps:_bitrateAdjuster->GetAdjustedBitrateBps()];
+@@ -348,5 +402,14 @@ void compressionOutputCallback(void* encoder,
+     RTC_LOG(LS_ERROR) << "Failed to encode frame with code: " << status;
+     return WEBRTC_VIDEO_CODEC_ERROR;
+   }
++  void (^resultHandler)(NSDictionary<NSString *, id> *) =
++      _castTuningOptions[@"encoder_runtime_frame_handler"];
++  if (resultHandler) {
++    resultHandler(@{
++      @"event_type" : @"encoder_frame_submitted",
++      @"generation" : @(maxQpGeneration),
++      @"encoder_session_id" : _encoderSessionId ?: @"UNKNOWN",
++    });
++  }
+   return WEBRTC_VIDEO_CODEC_OK;
+ }
 @@ -387,6 +441,13 @@ void compressionOutputCallback(void* encoder,
 
  - (int)resetCompressionSession {
@@ -526,7 +541,22 @@ index 3e1e274..1e985f8 100644
    if (status != noErr) {
      RTC_LOG(LS_ERROR) << "h265 encode failed.";
      return;
-@@ -581,7 +947,26 @@ void compressionOutputCallback(void* encoder,
+@@ -522,5 +897,14 @@ void compressionOutputCallback(void* encoder,
+   }
+   if (infoFlags & kVTEncodeInfo_FrameDropped) {
+     RTC_LOG(LS_INFO) << "h265 encoder dropped a frame.";
++    void (^resultHandler)(NSDictionary<NSString *, id> *) =
++        _castTuningOptions[@"encoder_runtime_frame_handler"];
++    if (resultHandler) {
++      resultHandler(@{
++        @"event_type" : @"encoder_frame_dropped",
++        @"generation" : @(maxQpGeneration),
++        @"encoder_session_id" : encoderSessionId ?: @"UNKNOWN",
++      });
++    }
+     return;
+   }
+@@ -581,7 +965,27 @@ void compressionOutputCallback(void* encoder,
    if (_useAnnexB) {
        _h265BitstreamParser.ParseBitstream(*buffer);
        auto qp = _h265BitstreamParser.GetLastSliceQp();
@@ -534,27 +564,28 @@ index 3e1e274..1e985f8 100644
 +      frame.qp = @(qp.value_or(-1));
 +  }
 +
-+  if (isKeyframe && maxQpGeneration > 0 && frame.qp) {
++  if (frame.qp) {
 +    NSMutableDictionary<NSString *, id> *event = [@{
-+      @"event_type" : @"encoder_qp_sample",
++      @"event_type" : @"encoder_frame_encoded",
 +      @"requested_max_qp" : @(requestedMaxQp),
 +      @"generation" : @(maxQpGeneration),
 +      @"actual_qp" : frame.qp,
-+      @"key_frame" : @(YES),
++      @"key_frame" : @(isKeyframe),
 +      @"encoded_bytes" : @(frame.buffer.length),
 +      @"encoder_id" : _encoderId ?: @"UNKNOWN",
 +      @"encoder_session_id" : encoderSessionId ?: @"UNKNOWN",
 +    } mutableCopy];
++    event[isKeyframe ? @"key_frame_qp" : @"delta_frame_qp"] = frame.qp;
 +    event[@"codec_name"] = @"H265";
 +    void (^resultHandler)(NSDictionary<NSString *, id> *) =
-+        _castTuningOptions[@"encoder_runtime_qp_result_handler"];
++        _castTuningOptions[@"encoder_runtime_frame_handler"];
 +    if (resultHandler) {
 +      resultHandler(event);
 +    }
    }
 
    BOOL res = _callback(frame, [[RTC_OBJC_TYPE (RTCCodecSpecificInfoH265) alloc] init]);
-@@ -603,4 +988,4 @@ void compressionOutputCallback(void* encoder,
+@@ -603,4 +1007,4 @@ void compressionOutputCallback(void* encoder,
          VTCompressionSessionCompleteFrames(_compressionSession, kCMTimeInvalid);
  }
 

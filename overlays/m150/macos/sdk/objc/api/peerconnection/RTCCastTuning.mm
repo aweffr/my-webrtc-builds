@@ -21,6 +21,24 @@ namespace {
 
 NSString *const RTCCastTuningErrorDomain = @"org.webrtc.CastTuning";
 
+NSArray<NSNumber *> *EmptyQpHistogram() {
+  NSMutableArray<NSNumber *> *histogram =
+      [NSMutableArray arrayWithCapacity:52];
+  for (NSInteger qp = 0; qp <= 51; ++qp)
+    [histogram addObject:@0];
+  return histogram;
+}
+
+NSArray<NSNumber *> *QpHistogramWithIncrementedBucket(
+    NSArray<NSNumber *> *histogram,
+    NSInteger qp) {
+  if (qp < 0 || qp > 51)
+    return histogram;
+  NSMutableArray<NSNumber *> *updated = [histogram mutableCopy];
+  updated[qp] = @(updated[qp].unsignedLongLongValue + 1);
+  return updated;
+}
+
 NSError *CastError(NSString *message) {
   return [NSError errorWithDomain:RTCCastTuningErrorDomain
                              code:1
@@ -133,6 +151,12 @@ NSError *CastError(NSString *message) {
   NSNumber *_lastKeyFrameBytes;
   uint64_t _lastQpSampleGeneration;
   NSString *_lastQpSampleEncoderSessionId;
+  NSString *_telemetryEncoderSessionId;
+  uint64_t _submittedFrameCount;
+  uint64_t _encodedFrameCount;
+  uint64_t _droppedFrameCount;
+  NSArray<NSNumber *> *_keyFrameQpHistogram;
+  NSArray<NSNumber *> *_deltaFrameQpHistogram;
 }
 
 - (instancetype)initWithMaxQp:(NSNumber *)maxQp {
@@ -141,6 +165,8 @@ NSError *CastError(NSString *message) {
     _requestedMaxQp = [maxQp copy];
     _applyState = maxQp ? @"pending" : @"not_requested";
     _generation = maxQp ? 1 : 0;
+    _keyFrameQpHistogram = EmptyQpHistogram();
+    _deltaFrameQpHistogram = EmptyQpHistogram();
   }
   return self;
 }
@@ -162,6 +188,12 @@ NSError *CastError(NSString *message) {
   _lastKeyFrameBytes = nil;
   _lastQpSampleGeneration = 0;
   _lastQpSampleEncoderSessionId = nil;
+  _telemetryEncoderSessionId = nil;
+  _submittedFrameCount = 0;
+  _encodedFrameCount = 0;
+  _droppedFrameCount = 0;
+  _keyFrameQpHistogram = EmptyQpHistogram();
+  _deltaFrameQpHistogram = EmptyQpHistogram();
   ++_generation;
   [_lock unlock];
   return YES;
@@ -185,13 +217,21 @@ NSError *CastError(NSString *message) {
     [_lock unlock];
     return;
   }
+  NSString *eventEncoderSessionId = event[@"encoder_session_id"];
+  if (![eventEncoderSessionId isKindOfClass:[NSString class]] ||
+      eventEncoderSessionId.length == 0) {
+    [_lock unlock];
+    return;
+  }
+  if (![_telemetryEncoderSessionId isEqualToString:eventEncoderSessionId]) {
+    _telemetryEncoderSessionId = [eventEncoderSessionId copy];
+    _submittedFrameCount = 0;
+    _encodedFrameCount = 0;
+    _droppedFrameCount = 0;
+    _keyFrameQpHistogram = EmptyQpHistogram();
+    _deltaFrameQpHistogram = EmptyQpHistogram();
+  }
   if ([eventType isEqualToString:@"encoder_runtime_qp_applied"]) {
-    NSString *eventEncoderSessionId = event[@"encoder_session_id"];
-    if (![eventEncoderSessionId isKindOfClass:[NSString class]] ||
-        eventEncoderSessionId.length == 0) {
-      [_lock unlock];
-      return;
-    }
     _effectiveMaxQp = event[@"effective_max_qp"];
     _applyState = @"applied";
     _osStatus = event[@"os_status"];
@@ -204,20 +244,29 @@ NSError *CastError(NSString *message) {
     _applyState = @"failed";
     _osStatus = event[@"os_status"];
     _appliedEncoderSessionId = nil;
-  } else if ([eventType isEqualToString:@"encoder_qp_sample"]) {
-    NSString *eventEncoderSessionId = event[@"encoder_session_id"];
-    if (![_applyState isEqualToString:@"applied"] ||
-        ![eventEncoderSessionId isKindOfClass:[NSString class]] ||
+  } else if ([eventType isEqualToString:@"encoder_frame_submitted"]) {
+    ++_submittedFrameCount;
+  } else if ([eventType isEqualToString:@"encoder_frame_dropped"]) {
+    ++_droppedFrameCount;
+  } else if ([eventType isEqualToString:@"encoder_frame_encoded"]) {
+    if ([_applyState isEqualToString:@"applied"] &&
         ![eventEncoderSessionId isEqualToString:_appliedEncoderSessionId]) {
       [_lock unlock];
       return;
     }
+    ++_encodedFrameCount;
     _lastEncodedQp = event[@"actual_qp"];
     _lastQpSampleGeneration = _generation;
     _lastQpSampleEncoderSessionId = [eventEncoderSessionId copy];
+    const NSInteger qp = _lastEncodedQp.integerValue;
     if ([event[@"key_frame"] boolValue]) {
       _lastKeyFrameQp = event[@"actual_qp"];
       _lastKeyFrameBytes = event[@"encoded_bytes"];
+      _keyFrameQpHistogram =
+          QpHistogramWithIncrementedBucket(_keyFrameQpHistogram, qp);
+    } else {
+      _deltaFrameQpHistogram =
+          QpHistogramWithIncrementedBucket(_deltaFrameQpHistogram, qp);
     }
   }
   [_lock unlock];
@@ -239,6 +288,11 @@ NSError *CastError(NSString *message) {
     @"last_qp_sample_generation" : @(_lastQpSampleGeneration),
     @"last_qp_sample_encoder_session_id" :
         _lastQpSampleEncoderSessionId ?: [NSNull null],
+    @"submitted_frame_count" : @(_submittedFrameCount),
+    @"encoded_frame_count" : @(_encodedFrameCount),
+    @"dropped_frame_count" : @(_droppedFrameCount),
+    @"key_frame_qp_histogram" : _keyFrameQpHistogram,
+    @"delta_frame_qp_histogram" : _deltaFrameQpHistogram,
   };
   [_lock unlock];
   return snapshot;
@@ -524,6 +578,11 @@ class ObjCVideoSourceAdapter final
 @property(nonatomic, nullable) NSNumber *lastKeyFrameBytes;
 @property(nonatomic) uint64_t lastQpSampleGeneration;
 @property(nonatomic, nullable) NSString *lastQpSampleEncoderSessionId;
+@property(nonatomic) uint64_t submittedFrameCount;
+@property(nonatomic) uint64_t encodedFrameCount;
+@property(nonatomic) uint64_t droppedFrameCount;
+@property(nonatomic) NSArray<NSNumber *> *keyFrameQpHistogram;
+@property(nonatomic) NSArray<NSNumber *> *deltaFrameQpHistogram;
 @end
 
 @implementation RTCCastTuningSnapshot
@@ -653,6 +712,10 @@ class ObjCVideoSourceAdapter final
       [^(NSDictionary<NSString *, id> *event) {
         [runtimeState recordEncoderEvent:event];
         [evidence recordEvent:event];
+      } copy];
+  options[@"encoder_runtime_frame_handler"] =
+      [^(NSDictionary<NSString *, id> *event) {
+        [runtimeState recordEncoderEvent:event];
       } copy];
   id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)> tuned =
       [[RTCCastTuningVideoEncoderFactory alloc]
@@ -810,6 +873,14 @@ class ObjCVideoSourceAdapter final
               isKindOfClass:[NSString class]]
           ? runtime[@"last_qp_sample_encoder_session_id"]
           : nil;
+  snapshot.submittedFrameCount =
+      [runtime[@"submitted_frame_count"] unsignedLongLongValue];
+  snapshot.encodedFrameCount =
+      [runtime[@"encoded_frame_count"] unsignedLongLongValue];
+  snapshot.droppedFrameCount =
+      [runtime[@"dropped_frame_count"] unsignedLongLongValue];
+  snapshot.keyFrameQpHistogram = runtime[@"key_frame_qp_histogram"];
+  snapshot.deltaFrameQpHistogram = runtime[@"delta_frame_qp_histogram"];
   return snapshot;
 }
 

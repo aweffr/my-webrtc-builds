@@ -722,6 +722,21 @@ index 0fe7f05762..0d20535c00 100644
    encodeParams->codecSpecificInfo.packetizationMode = _packetizationMode;
  
    // Update the bitrate if needed.
+@@ -577,5 +682,14 @@ NSUInteger GetMaxSampleRate(
+     RTC_LOG(LS_ERROR) << "Failed to encode frame with code: " << status;
+     return WEBRTC_VIDEO_CODEC_ERROR;
+   }
++  void (^resultHandler)(NSDictionary<NSString *, id> *) =
++      _castTuningOptions[@"encoder_runtime_frame_handler"];
++  if (resultHandler) {
++    resultHandler(@{
++      @"event_type" : @"encoder_frame_submitted",
++      @"generation" : @(maxQpGeneration),
++      @"encoder_session_id" : _encoderSessionId ?: @"UNKNOWN",
++    });
++  }
+   return WEBRTC_VIDEO_CODEC_OK;
+ }
 @@ -684,6 +769,14 @@ NSUInteger GetMaxSampleRate(
  
  - (int)resetCompressionSessionWithPixelFormat:(OSType)framePixelFormat {
@@ -1092,6 +1107,21 @@ index 0fe7f05762..0d20535c00 100644
    RTCVideoEncoderCallback callback = _callback;
    if (!callback) {
      return;
+@@ -859,5 +1190,14 @@ NSUInteger GetMaxSampleRate(
+   }
+   if (infoFlags & kVTEncodeInfo_FrameDropped) {
+     RTC_LOG(LS_INFO) << "H264 encode dropped frame.";
++    void (^resultHandler)(NSDictionary<NSString *, id> *) =
++        _castTuningOptions[@"encoder_runtime_frame_handler"];
++    if (resultHandler) {
++      resultHandler(@{
++        @"event_type" : @"encoder_frame_dropped",
++        @"generation" : @(maxQpGeneration),
++        @"encoder_session_id" : encoderSessionId ?: @"UNKNOWN",
++      });
++    }
+     return;
+   }
 @@ -874,6 +1144,41 @@ NSUInteger GetMaxSampleRate(
  
    if (isKeyframe) {
@@ -1134,24 +1164,26 @@ index 0fe7f05762..0d20535c00 100644
    }
  
    __block std::unique_ptr<webrtc::Buffer> buffer =
-@@ -908,6 +1213,23 @@ NSUInteger GetMaxSampleRate(
+@@ -908,6 +1283,25 @@ NSUInteger GetMaxSampleRate(
    _h264BitstreamParser.ParseBitstream(*buffer);
    frame.qp = @(_h264BitstreamParser.GetLastSliceQp().value_or(-1));
  
-+  if (isKeyframe && maxQpGeneration > 0) {
++  {
 +    void (^resultHandler)(NSDictionary<NSString *, id> *) =
-+        _castTuningOptions[@"encoder_runtime_qp_result_handler"];
++        _castTuningOptions[@"encoder_runtime_frame_handler"];
 +    if (resultHandler) {
-+      resultHandler(@{
-+        @"event_type" : @"encoder_qp_sample",
++      NSMutableDictionary<NSString *, id> *event = [@{
++        @"event_type" : @"encoder_frame_encoded",
 +        @"requested_max_qp" : @(requestedMaxQp),
 +        @"generation" : @(maxQpGeneration),
 +        @"actual_qp" : frame.qp,
-+        @"key_frame" : @(YES),
++        @"key_frame" : @(isKeyframe),
 +        @"encoded_bytes" : @(frame.buffer.length),
 +        @"encoder_id" : _encoderId ?: @"UNKNOWN",
 +        @"encoder_session_id" : encoderSessionId ?: @"UNKNOWN",
-+      });
++      } mutableCopy];
++      event[isKeyframe ? @"key_frame_qp" : @"delta_frame_qp"] = frame.qp;
++      resultHandler(event);
 +    }
 +  }
 +

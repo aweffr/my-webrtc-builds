@@ -41,7 +41,11 @@ class CastTuningNativeContractTests(unittest.TestCase):
         self.assertIn("VTSessionCopyProperty", transformed)
         self.assertIn("encoder_runtime_qp_result_handler", transformed)
         self.assertIn("encoder_runtime_qp_applied", transformed)
-        self.assertIn("encoder_qp_sample", transformed)
+        self.assertIn("encoder_frame_encoded", transformed)
+        self.assertIn("encoder_frame_submitted", transformed)
+        self.assertIn("encoder_frame_dropped", transformed)
+        self.assertIn("key_frame_qp", transformed)
+        self.assertIn("delta_frame_qp", transformed)
         self.assertIn("resetCompressionSessionForRuntimeMaxQpIfNeeded", transformed)
         self.assertIn("encoderSessionId:encodeParams->encoder_session_id", transformed)
 
@@ -95,6 +99,10 @@ class CastTuningNativeContractTests(unittest.TestCase):
         self.assertIn("VTSessionCopyProperty", implementation)
         self.assertIn("resetCompressionSessionForRuntimeMaxQpIfNeeded", implementation)
         self.assertIn("qp.value_or(-1)", implementation)
+        self.assertIn("encoder_frame_submitted", implementation)
+        self.assertIn("encoder_frame_dropped", implementation)
+        self.assertIn("key_frame_qp", implementation)
+        self.assertIn("delta_frame_qp", implementation)
         self.assertIn('event[@"codec_name"] = @"H265"', implementation)
 
     def test_native_contract_tests_use_platform_neutral_paths(self) -> None:
@@ -158,11 +166,17 @@ class CastTuningNativeContractTests(unittest.TestCase):
         self.assertIn("NSString *maxQpAppliedEncoderSessionId", header)
         self.assertIn("uint64_t lastQpSampleGeneration", header)
         self.assertIn("NSString *lastQpSampleEncoderSessionId", header)
+        self.assertIn("uint64_t submittedFrameCount", header)
+        self.assertIn("uint64_t encodedFrameCount", header)
+        self.assertIn("uint64_t droppedFrameCount", header)
+        self.assertIn("NSArray<NSNumber *> *keyFrameQpHistogram", header)
+        self.assertIn("NSArray<NSNumber *> *deltaFrameQpHistogram", header)
         self.assertIn("RTCCastTuningEncoderRuntimeState", implementation)
         self.assertIn('options[@"encoder_runtime_qp_provider"]', implementation)
         self.assertIn(
             'options[@"encoder_runtime_qp_result_handler"]', implementation
         )
+        self.assertIn('options[@"encoder_runtime_frame_handler"]', implementation)
         self.assertIn("class ObjCEncoderRuntimeAdapter", implementation)
         self.assertIn("ApplyMaxQp", implementation)
         self.assertIn("_lastKeyFrameQp = nil", implementation)
@@ -170,6 +184,9 @@ class CastTuningNativeContractTests(unittest.TestCase):
             "[eventEncoderSessionId isEqualToString:_appliedEncoderSessionId]",
             implementation,
         )
+        self.assertIn('isEqualToString:@"encoder_frame_submitted"', implementation)
+        self.assertIn('isEqualToString:@"encoder_frame_dropped"', implementation)
+        self.assertIn("QpHistogramWithIncrementedBucket", implementation)
 
     def test_macos_exposes_hevc_cast_tuning(self) -> None:
         implementation = (

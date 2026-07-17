@@ -98,6 +98,11 @@ RTC_OBJC_EXPORT
 @property(nonatomic, readonly, nullable) NSNumber *lastKeyFrameBytes;
 @property(nonatomic, readonly) uint64_t lastQpSampleGeneration;
 @property(nonatomic, readonly, nullable) NSString *lastQpSampleEncoderSessionId;
+@property(nonatomic, readonly) uint64_t submittedFrameCount;
+@property(nonatomic, readonly) uint64_t encodedFrameCount;
+@property(nonatomic, readonly) uint64_t droppedFrameCount;
+@property(nonatomic, readonly) NSArray<NSNumber *> *keyFrameQpHistogram;
+@property(nonatomic, readonly) NSArray<NSNumber *> *deltaFrameQpHistogram;
 
 @end
 
