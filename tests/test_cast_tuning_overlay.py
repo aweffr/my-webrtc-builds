@@ -119,6 +119,25 @@ class CastTuningNativeContractTests(unittest.TestCase):
             implementation,
         )
 
+    def test_macos_exposes_hevc_cast_tuning(self) -> None:
+        implementation = (
+            ROOT
+            / "overlays"
+            / "m150"
+            / "macos"
+            / "sdk"
+            / "objc"
+            / "api"
+            / "peerconnection"
+            / "RTCCastTuning.mm"
+        ).read_text()
+
+        self.assertIn('components/video_codec/RTCVideoEncoderH265.h', implementation)
+        self.assertIn('caseInsensitiveCompare:@"H265"', implementation)
+        self.assertIn("RTCVideoEncoderH265) alloc", implementation)
+        self.assertIn("castTuningOptions:_options", implementation)
+        self.assertIn('@"video_toolbox_spatial_adaptive_qp"', implementation)
+
     def test_android_jni_handles_are_raw_jlong_parameters(self) -> None:
         source = (
             ROOT

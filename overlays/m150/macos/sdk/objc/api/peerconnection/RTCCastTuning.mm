@@ -9,6 +9,7 @@
 #import "RTCRtpSender+Private.h"
 #import "RTCVideoTrack+Private.h"
 #import "components/video_codec/RTCVideoEncoderH264.h"
+#import "components/video_codec/RTCVideoEncoderH265.h"
 
 #include "api/cast_tuning/cast_tuning_config.h"
 #include "api/cast_tuning/cast_tuning_controller.h"
@@ -303,6 +304,17 @@ NSDictionary<NSString *, id> *EncoderOptions(
   RTC_CAST_NUMBER_OPTION(video_toolbox_low_latency_rate_control,
                          @"video_toolbox_low_latency_rate_control")
 #undef RTC_CAST_NUMBER_OPTION
+  if (config.encoder.video_toolbox_spatial_adaptive_qp) {
+    using webrtc::cast_tuning::SpatialAdaptiveQpMode;
+    switch (*config.encoder.video_toolbox_spatial_adaptive_qp) {
+      case SpatialAdaptiveQpMode::kDefault:
+        options[@"video_toolbox_spatial_adaptive_qp"] = @"DEFAULT";
+        break;
+      case SpatialAdaptiveQpMode::kDisable:
+        options[@"video_toolbox_spatial_adaptive_qp"] = @"DISABLE";
+        break;
+    }
+  }
   if (config.encoder.h264_profile) {
     options[@"h264_profile"] =
         [NSString stringWithUTF8String:config.encoder.h264_profile->c_str()];
@@ -593,6 +605,11 @@ class ObjCVideoSourceAdapter final
   if ([info.name caseInsensitiveCompare:@"H264"] == NSOrderedSame) {
     return
         [[RTC_OBJC_TYPE(RTCVideoEncoderH264) alloc] initWithCodecInfo:info
+                                                    castTuningOptions:_options];
+  }
+  if ([info.name caseInsensitiveCompare:@"H265"] == NSOrderedSame) {
+    return
+        [[RTC_OBJC_TYPE(RTCVideoEncoderH265) alloc] initWithCodecInfo:info
                                                     castTuningOptions:_options];
   }
   return [_base createEncoder:info];

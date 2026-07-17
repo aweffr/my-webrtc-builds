@@ -105,7 +105,7 @@ git commit -m "feat: add schema 3 spatial aq tuning"
 - Modify: `overlays/m150/macos/sdk/objc/api/peerconnection/RTCCastTuning.mm`
 - Modify: `tests/test_cast_tuning_overlay.py`
 
-- [ ] **Step 1: Write a failing factory bridge test**
+- [x] **Step 1: Write a failing factory bridge test**
 
 ```python
 self.assertIn('caseInsensitiveCompare:@"H265"', implementation)
@@ -115,19 +115,19 @@ self.assertIn('@"video_toolbox_spatial_adaptive_qp"', implementation)
 self.assertIn('@"codec_name"', implementation)
 ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 ```bash
 python3 -m unittest tests.test_cast_tuning_overlay.CastTuningNativeContractTests.test_macos_exposes_hevc_cast_tuning -v
 ```
 
-- [ ] **Step 3: Implement the option bridge and factory interception**
+- [x] **Step 3: Implement the option bridge and factory interception**
 
 Import `RTCVideoEncoderH265.h`; map the enum to `DEFAULT` or `DISABLE`; intercept
 H.265 with the same immutable options used by H.264. Keep all other codecs
 delegated to the base factory and retain codec identity in encoder evidence.
 
-- [ ] **Step 4: Verify bridge GREEN and commit**
+- [x] **Step 4: Verify bridge GREEN and commit**
 
 ```bash
 python3 -m unittest tests.test_cast_tuning_overlay -v
