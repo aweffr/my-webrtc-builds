@@ -239,30 +239,30 @@ git commit -m "test: verify hevc videotoolbox tuning"
 **Files:**
 - Modify: this plan's `Execution findings` with immutable run IDs and hashes.
 
-- [ ] **Step 1: Push the complete builder commit on main**
+- [x] **Step 1: Push the complete builder commit on main**
 
 ```bash
 git status --short --branch
 git push origin main
 ```
 
-- [ ] **Step 2: Dispatch only the requested workflows**
+- [x] **Step 2: Dispatch only the requested workflows**
 
 Dispatch `build-macos-arm64.yml` and `build-android.yml` for the same full
 builder SHA. Record run IDs and verify each run's head SHA before waiting.
 
-- [ ] **Step 3: Wait for both Actions runs**
+- [x] **Step 3: Wait for both Actions runs**
 
 Poll `gh run view <id> --json status,conclusion,headSha,url,jobs`. On failure,
 inspect logs, reproduce with a failing test where possible, fix on main, rerun
 the local gate, push, and dispatch both platforms again so commits never mix.
 
-- [ ] **Step 4: Download without repacking**
+- [x] **Step 4: Download without repacking**
 
 Use `gh run download` into an ignored directory. Verify package metadata builder
 commit, arm64 framework architecture, AAR members, and SHA-256.
 
-- [ ] **Step 5: Run runtime gates on exact downloads**
+- [x] **Step 5: Run runtime gates on exact downloads**
 
 ```bash
 tools/run-macos-videotoolbox-probe.sh <downloaded-arm64-framework-archive>
@@ -272,7 +272,7 @@ tools/android-aar-smoke.sh <android-run-id>
 Expected: HEVC hardware cases pass; Android reports `AAR_SMOKE_OK` and H.265
 decoder capability from the exact AAR.
 
-- [ ] **Step 6: Record immutable evidence and commit**
+- [x] **Step 6: Record immutable evidence and commit**
 
 Append run IDs, head SHA, artifact names/hashes, M5 Pro/macOS identity, Android
 ABI/API/decoder identity, and probe results. Do not commit binaries or logs.
@@ -469,3 +469,20 @@ quality-priority, Main 4:4:4, and VBR/presets.
   framework, then failed native validation because new schema-3 JSON fixtures
   included an unsupported root `enabled` field. The fixtures now rely on the
   established implicit enable rule, and the schema error names versions 1–3.
+- 2026-07-18: Final authoritative runs use builder commit
+  `a8a349308e84f1a9fe652000f89128ca547acde5`: macOS arm64 run
+  `29593016125` and Android run `29593018851` both succeeded. Downloaded package
+  SHA-256 values are `c66f9ec62d25739384db796f7cbb891fb35be612588748deb5b0a0c913ddce47`
+  for `webrtc-m150-macos-arm64.tar.gz`,
+  `0539178ce8d3a928d09da23ea3d95ca4ec86625113d1a5cf6bef764c1a86f336`
+  for the Android tar, and
+  `a85c2cb62dff0c48ec07cd33c10ddcdcb8a3ad650fd83e21ec489e8fe68a8674`
+  for the Android AAR. Both metadata files report schema 3 and the same builder
+  commit.
+- 2026-07-18: Exact-package hardware probe on Mac17,8/macOS 26.5.2 confirmed
+  ordinary Apple HEVC encoder `com.apple.videotoolbox.videoencoder.ave.hevc`,
+  realtime `1`, frame reordering `0`, spatial AQ DEFAULT effective level `-1`,
+  DISABLE effective level `0`, and dynamic MaxQP/QP samples `32 → 22 → 32`.
+  The HEVC RTVC encoder `com.apple.videotoolbox.videoencoder.hevc.rtvc`
+  correctly reports MaxQP unsupported with OSStatus `-12900`; the probe gate
+  records that real capability boundary instead of treating it as success.

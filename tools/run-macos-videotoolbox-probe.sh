@@ -48,7 +48,12 @@ tar -xzf "$macos_package" -C "$work_dir/extracted"
 frameworks=()
 while IFS= read -r framework; do
   frameworks+=("$framework")
-done < <(find "$work_dir/extracted" -type d -name WebRTC.framework -print)
+done < <(
+  find "$work_dir/extracted" \
+    -type d \
+    -path '*/webrtc/Frameworks/WebRTC.framework' \
+    -print
+)
 if [[ ${#frameworks[@]} -ne 1 ]]; then
   echo "expected exactly one WebRTC.framework in macOS arm64 package" >&2
   exit 1
@@ -140,12 +145,12 @@ jq -e '
   (all(.hevc_modes[]; .session_status == "success" and .codec == "H265")) and
   (all(.hevc_modes[];
     .realtime_os_status == 0 and
-    .effective_realtime == true and
+    .effective_realtime == 1 and
     .allow_frame_reordering_os_status == 0 and
-    .effective_allow_frame_reordering == false)) and
+    .effective_allow_frame_reordering == 0)) and
   ((.hevc_modes | map(.mode) | sort) ==
     ["hevc_low_latency", "hevc_spatial_default", "hevc_spatial_disable"]) and
-  (all(.hevc_modes[];
+  (all(.hevc_modes[] | select(.mode != "hevc_low_latency");
     (.runtime_qp | map(.requested_max_qp)) == [32, 22, 32] and
     (all(.runtime_qp[];
       .apply_state == "applied" and
@@ -153,6 +158,13 @@ jq -e '
       .actual_qp >= 0 and
       .actual_qp <= .requested_max_qp)) and
     ([.runtime_qp[].encoder_session_id] | unique | length) == 3)) and
+  ((.hevc_modes[] | select(.mode == "hevc_low_latency") | .runtime_qp) as $runtime_qp |
+    ($runtime_qp | map(.requested_max_qp)) == [32, 22, 32] and
+    (all($runtime_qp[];
+      .apply_state == "unsupported" and
+      .os_status == -12900 and
+      .actual_qp >= 0)) and
+    ([$runtime_qp[].encoder_session_id] | unique | length) == 3) and
   (all(.hevc_modes[] | select(.mode != "hevc_low_latency");
     .spatial_event_type == "encoder_spatial_adaptive_qp_applied" and
     .spatial_os_status == 0)) and
