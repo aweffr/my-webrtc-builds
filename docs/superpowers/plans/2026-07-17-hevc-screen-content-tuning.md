@@ -486,3 +486,16 @@ quality-priority, Main 4:4:4, and VBR/presets.
   The HEVC RTVC encoder `com.apple.videotoolbox.videoencoder.hevc.rtvc`
   correctly reports MaxQP unsupported with OSStatus `-12900`; the probe gate
   records that real capability boundary instead of treating it as success.
+- 2026-07-18: Downstream commit `9113e68` pins the exact macOS arm64 tar and
+  Android AAR, stages an arm64 XCFramework, moves CastTuning to schema 3 with
+  ordinary HEVC plus spatial AQ `DEFAULT`, and adds Swift Sender policies
+  `h264-only`, `h265-only`, `prefer-h265`, and `default` (H264 first). Review
+  removed the unused descriptor/RTX policy abstraction so runtime codec ordering
+  has one source of truth and is verified by actual offer SDP.
+- 2026-07-18: Full downstream `make verify` passed, including 122 macOS XCTest
+  cases, Android tests/lint/builds, Go race tests, bootstrap/checksum, and
+  verifier suites. Direct Mac-to-Android E2E retained evidence at
+  `artifacts/android-tv-e2e/run.lQI4ts`: Sender reported 26 `video/H265` frames,
+  encoder `com.apple.videotoolbox.videoencoder.ave.hevc`, keyframe QP 24 and
+  effective MaxQP 24; Android reported 26 decoded 1920x1080 H265 frames from
+  `c2.android.hevc.decoder`; both selected paths were UDP.

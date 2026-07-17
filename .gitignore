@@ -11,3 +11,4 @@ smoke/android-aar/build/
 smoke/android-aar/app/build/
 smoke/android-aar/app/libs/*.aar
 evidence/
+.artifacts/
