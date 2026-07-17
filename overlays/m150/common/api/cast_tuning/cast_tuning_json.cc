@@ -234,7 +234,8 @@ bool ParseEncoder(const Json::Value& value,
                     "h264_profile", "h264_level", "periodic_idr_seconds",
                     "max_h264_slice_bytes", "data_rate_limit_factor",
                     "data_rate_window_ms", "max_frame_delay_count", "max_qp",
-                    "video_toolbox_low_latency_rate_control"},
+                    "video_toolbox_low_latency_rate_control",
+                    "video_toolbox_spatial_adaptive_qp"},
                    error)) {
     return false;
   }
@@ -254,6 +255,25 @@ bool ParseEncoder(const Json::Value& value,
       return false;
     }
     encoder->hardware_policy = found->second;
+  }
+  if (value.isMember("video_toolbox_spatial_adaptive_qp")) {
+    if (!value["video_toolbox_spatial_adaptive_qp"].isString()) {
+      *error =
+          "encoder.video_toolbox_spatial_adaptive_qp must be a string";
+      return false;
+    }
+    const std::map<std::string, SpatialAdaptiveQpMode> modes = {
+        {"DEFAULT", SpatialAdaptiveQpMode::kDefault},
+        {"DISABLE", SpatialAdaptiveQpMode::kDisable},
+    };
+    const auto found =
+        modes.find(value["video_toolbox_spatial_adaptive_qp"].asString());
+    if (found == modes.end()) {
+      *error =
+          "encoder.video_toolbox_spatial_adaptive_qp has an unsupported value";
+      return false;
+    }
+    encoder->video_toolbox_spatial_adaptive_qp = found->second;
   }
   return ReadBool(value, "realtime", "encoder", &encoder->realtime, error) &&
          ReadBool(value, "allow_frame_reordering", "encoder",

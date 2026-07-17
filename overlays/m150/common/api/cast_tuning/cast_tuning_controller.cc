@@ -88,6 +88,8 @@ std::string ConfigFingerprint(const CastTuningConfig& config) {
   AppendOptional(canonical, config.encoder.max_qp);
   AppendOptional(canonical,
                  config.encoder.video_toolbox_low_latency_rate_control);
+  AppendOptionalEnum(canonical,
+                     config.encoder.video_toolbox_spatial_adaptive_qp);
   AppendOptional(canonical, config.receiver.jitter_minimum_ms);
   AppendOptional(canonical, config.receiver.prerender_smoothing);
   AppendOptional(canonical, config.receiver.render_lead_ms);

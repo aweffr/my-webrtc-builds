@@ -7,7 +7,7 @@
 
 namespace webrtc::cast_tuning {
 
-inline constexpr int kTuningSchemaVersion = 2;
+inline constexpr int kTuningSchemaVersion = 3;
 inline constexpr int kMinimumTuningSchemaVersion = 1;
 
 enum class Profile {
@@ -27,6 +27,7 @@ enum class DegradationPreference {
 enum class NetworkPriority { kUnspecified, kLow, kMedium, kHigh };
 enum class HardwarePolicy { kPreferHardware, kRequireHardware, kAllowSoftware };
 enum class FecMode { kDisabled, kUlpfec, kFlexfec };
+enum class SpatialAdaptiveQpMode { kDefault, kDisable };
 
 struct ValidationResult {
   std::string error;
@@ -77,6 +78,7 @@ struct EncoderConfig {
   std::optional<int> max_frame_delay_count;
   std::optional<int> max_qp;
   std::optional<bool> video_toolbox_low_latency_rate_control;
+  std::optional<SpatialAdaptiveQpMode> video_toolbox_spatial_adaptive_qp;
 };
 
 struct ReceiverConfig {

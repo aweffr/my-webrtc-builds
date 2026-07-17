@@ -49,7 +49,7 @@
 - Test: `overlays/m150/common/api/cast_tuning/cast_tuning_json_contract_test.cc`
 - Test: `tests/test_metadata.py`
 
-- [ ] **Step 1: Write failing native schema tests**
+- [x] **Step 1: Write failing native schema tests**
 
 Require schema 3 while preserving schema 1/2 behavior:
 
@@ -63,7 +63,7 @@ Expect(!v2.encoder.video_toolbox_spatial_adaptive_qp,
 Parse schema-3 `DEFAULT` and `DISABLE`; reject an unknown value, schema 2 with
 the new field, and low-latency rate control combined with either spatial mode.
 
-- [ ] **Step 2: Run the native contract and verify RED**
+- [x] **Step 2: Run the native contract and verify RED**
 
 ```bash
 python3 -m unittest tests.test_cast_tuning_overlay.CastTuningNativeContractTests.test_config_profiles_validation_and_field_trials -v
@@ -72,7 +72,7 @@ python3 -m unittest tests.test_cast_tuning_overlay.CastTuningNativeContractTests
 Expected: compilation/assertion failure because schema 3, the enum, and field
 do not exist.
 
-- [ ] **Step 3: Implement the minimal typed field and parser**
+- [x] **Step 3: Implement the minimal typed field and parser**
 
 ```cpp
 inline constexpr int kTuningSchemaVersion = 3;
@@ -84,7 +84,7 @@ Only schema 3 accepts the JSON field. Add it to the canonical hash and reject
 the low-latency combination with the exact validation error documented in the
 design. Do not add profile defaults.
 
-- [ ] **Step 4: Verify GREEN and compatibility**
+- [x] **Step 4: Verify GREEN and compatibility**
 
 ```bash
 python3 -m unittest tests.test_cast_tuning_overlay tests.test_metadata -v
@@ -92,7 +92,7 @@ python3 -m unittest discover -s tests -v
 git diff --check
 ```
 
-- [ ] **Step 5: Commit the schema contract**
+- [x] **Step 5: Commit the schema contract**
 
 ```bash
 git add overlays/m150/common/api/cast_tuning builder/metadata.py builder/package.py tests/test_metadata.py
@@ -453,3 +453,11 @@ quality-priority, Main 4:4:4, and VBR/presets.
   followed by downstream integration.
 - 2026-07-17: Downstream started clean on `main` at `037351d`, one commit ahead
   of `origin/main`; that existing commit is preserved.
+- 2026-07-17: The user requires TDD and review to stay focused on core business
+  value. Tests are limited to effective HEVC controls, codec negotiation/decode,
+  artifact identity, and necessary compatibility; review must ignore defensive
+  boilerplate, style-only suggestions, speculative abstractions, and unrelated
+  refactors.
+- 2026-07-17: Schema-3 RED failed on the missing enum/field and metadata version
+  exactly as intended. The focused suite then passed 14 tests and the complete
+  repository suite passed all 105 tests after the minimal implementation.

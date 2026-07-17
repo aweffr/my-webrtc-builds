@@ -32,6 +32,16 @@ const char* FecModeName(FecMode mode) {
   return nullptr;
 }
 
+const char* SpatialAdaptiveQpModeName(SpatialAdaptiveQpMode mode) {
+  switch (mode) {
+    case SpatialAdaptiveQpMode::kDefault:
+      return "DEFAULT";
+    case SpatialAdaptiveQpMode::kDisable:
+      return "DISABLE";
+  }
+  return nullptr;
+}
+
 }  // namespace
 
 CastTuningConfig CastTuningConfig::ForProfile(Profile selected_profile,
@@ -125,7 +135,7 @@ bool CastTuningConfig::IsUpstream() const {
 ValidationResult CastTuningConfig::Validate() const {
   if (schema_version < kMinimumTuningSchemaVersion ||
       schema_version > kTuningSchemaVersion) {
-    return ValidationResult::Error("schema_version must be 1 or 2");
+    return ValidationResult::Error("schema_version must be 1, 2, or 3");
   }
   if (IsUpstream()) {
     return ValidationResult::Ok();
@@ -177,11 +187,28 @@ ValidationResult CastTuningConfig::Validate() const {
     return ValidationResult::Error(
         "encoder.video_toolbox_low_latency_rate_control requires schema_version 2");
   }
+  if (schema_version < 3 &&
+      encoder.video_toolbox_spatial_adaptive_qp.has_value()) {
+    return ValidationResult::Error(
+        "encoder.video_toolbox_spatial_adaptive_qp requires schema_version 3");
+  }
+  if (encoder.video_toolbox_spatial_adaptive_qp &&
+      SpatialAdaptiveQpModeName(
+          *encoder.video_toolbox_spatial_adaptive_qp) == nullptr) {
+    return ValidationResult::Error(
+        "encoder.video_toolbox_spatial_adaptive_qp has an unsupported value");
+  }
   if (encoder.video_toolbox_low_latency_rate_control.value_or(false) &&
       (encoder.data_rate_limit_factor || encoder.data_rate_window_ms)) {
     return ValidationResult::Error(
         "encoder VideoToolbox low-latency rate control is mutually exclusive "
         "with DataRateLimits");
+  }
+  if (encoder.video_toolbox_low_latency_rate_control.value_or(false) &&
+      encoder.video_toolbox_spatial_adaptive_qp) {
+    return ValidationResult::Error(
+        "encoder VideoToolbox spatial adaptive QP is incompatible with "
+        "low-latency rate control");
   }
   if (!InRange(receiver.jitter_minimum_ms, 0, 500) ||
       !InRange(receiver.render_lead_ms, 0, 100) ||
@@ -259,7 +286,8 @@ std::string CastTuningConfig::FieldTrialString() const {
       encoder.periodic_idr_seconds || encoder.max_h264_slice_bytes ||
       encoder.data_rate_limit_factor || encoder.data_rate_window_ms ||
       encoder.max_frame_delay_count || encoder.max_qp ||
-      encoder.video_toolbox_low_latency_rate_control) {
+      encoder.video_toolbox_low_latency_rate_control ||
+      encoder.video_toolbox_spatial_adaptive_qp) {
     trials << "WebRTC-CastTuning-VideoToolbox/realtime:"
            << (encoder.realtime.value_or(true) ? 1 : 0) << ",reorder:"
            << (encoder.allow_frame_reordering.value_or(false) ? 1 : 0)
@@ -274,6 +302,11 @@ std::string CastTuningConfig::FieldTrialString() const {
            << (encoder.video_toolbox_low_latency_rate_control.value_or(false)
                    ? 1
                    : 0)
+           << ",spatial_adaptive_qp:"
+           << (encoder.video_toolbox_spatial_adaptive_qp
+                   ? SpatialAdaptiveQpModeName(
+                         *encoder.video_toolbox_spatial_adaptive_qp)
+                   : "UNSET")
            << '/';
   }
   for (const auto& [key, value] : experimental.raw_field_trials) {

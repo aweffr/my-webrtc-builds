@@ -316,7 +316,7 @@ def stage_and_package(
             if target.overlays and overlay_dir is not None
             else {}
         ),
-        tuning_schema_version=2,
+        tuning_schema_version=3,
     )
     save_metadata(stage / "metadata.json", metadata)
     write_checksums(stage)

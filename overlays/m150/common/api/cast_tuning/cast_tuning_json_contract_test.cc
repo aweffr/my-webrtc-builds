@@ -18,6 +18,7 @@ void Expect(bool condition, const char* message) {
 
 int RunCastTuningJsonContractTests() {
   using webrtc::cast_tuning::CastTuningConfig;
+  using webrtc::cast_tuning::SpatialAdaptiveQpMode;
   std::string error;
   std::optional<CastTuningConfig> config = CastTuningConfig::ParseJson(
       R"({"schema_version":1,"profile":"DETAIL_IDLE","sender":{"max_fps":20,"max_bitrate_bps":5000000}})",
@@ -59,11 +60,48 @@ int RunCastTuningJsonContractTests() {
   Expect(error.find("mutually exclusive") != std::string::npos,
          "DataRateLimits conflict must be explicit");
 
-  Expect(
-      !CastTuningConfig::ParseJson(
-           R"({"schema_version":3,"profile":"DETAIL_IDLE"})", &error)
-           .has_value(),
-      "future schema versions must fail closed");
+  config = CastTuningConfig::ParseJson(
+      R"({"schema_version":3,"profile":"UPSTREAM","enabled":true,"encoder":{"video_toolbox_low_latency_rate_control":false,"video_toolbox_spatial_adaptive_qp":"DEFAULT"}})",
+      &error);
+  Expect(config.has_value(), error.c_str());
+  Expect(config->encoder.video_toolbox_spatial_adaptive_qp ==
+             SpatialAdaptiveQpMode::kDefault,
+         "schema v3 must parse DEFAULT spatial adaptive QP");
+
+  config = CastTuningConfig::ParseJson(
+      R"({"schema_version":3,"profile":"UPSTREAM","enabled":true,"encoder":{"video_toolbox_low_latency_rate_control":false,"video_toolbox_spatial_adaptive_qp":"DISABLE"}})",
+      &error);
+  Expect(config.has_value(), error.c_str());
+  Expect(config->encoder.video_toolbox_spatial_adaptive_qp ==
+             SpatialAdaptiveQpMode::kDisable,
+         "schema v3 must parse DISABLE spatial adaptive QP");
+
+  Expect(!CastTuningConfig::ParseJson(
+              R"({"schema_version":2,"profile":"UPSTREAM","enabled":true,"encoder":{"video_toolbox_spatial_adaptive_qp":"DEFAULT"}})",
+              &error)
+              .has_value(),
+         "schema v2 must reject the schema v3 spatial adaptive QP setting");
+  Expect(error.find("requires schema_version 3") != std::string::npos,
+         "schema v2 rejection must identify schema version 3");
+
+  Expect(!CastTuningConfig::ParseJson(
+              R"({"schema_version":3,"profile":"UPSTREAM","enabled":true,"encoder":{"video_toolbox_spatial_adaptive_qp":"UNKNOWN"}})",
+              &error)
+              .has_value(),
+         "unknown spatial adaptive QP mode must fail");
+
+  Expect(!CastTuningConfig::ParseJson(
+              R"({"schema_version":3,"profile":"UPSTREAM","enabled":true,"encoder":{"video_toolbox_low_latency_rate_control":true,"video_toolbox_spatial_adaptive_qp":"DEFAULT"}})",
+              &error)
+              .has_value(),
+         "spatial adaptive QP and low-latency rate control must conflict");
+  Expect(error.find("spatial adaptive QP") != std::string::npos,
+         "spatial adaptive QP conflict must be explicit");
+
+  Expect(!CastTuningConfig::ParseJson(
+              R"({"schema_version":4,"profile":"DETAIL_IDLE"})", &error)
+              .has_value(),
+         "future schema versions must fail closed");
 
   Expect(
       !CastTuningConfig::ParseJson(

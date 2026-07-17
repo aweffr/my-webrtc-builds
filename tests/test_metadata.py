@@ -25,7 +25,7 @@ def metadata_for(target: str = "macos-x64") -> BuildMetadata:
         gn_args={"x64": get_target("macos-x64").gn_args_for("x64")},
         toolchain={"xcode": "26.0.1"},
         overlay_hashes={"api/cast_tuning/config.h": "overlay-sha256"},
-        tuning_schema_version=2,
+        tuning_schema_version=3,
     )
 
 
@@ -56,7 +56,7 @@ class MetadataTests(unittest.TestCase):
             self.assertTrue(path.read_text().endswith("\n"))
             payload = json.loads(path.read_text())
             self.assertEqual(payload["schema_version"], 3)
-            self.assertEqual(payload["tuning_schema_version"], 2)
+            self.assertEqual(payload["tuning_schema_version"], 3)
             self.assertEqual(
                 payload["snapshot"]["archive_sha256"],
                 get_target("macos-x64").snapshot.archive_sha256,
@@ -85,7 +85,7 @@ class MetadataTests(unittest.TestCase):
 
     def test_legacy_tuning_schema_is_rejected_for_new_artifacts(self) -> None:
         payload = metadata_for().to_dict()
-        payload["tuning_schema_version"] = 1
+        payload["tuning_schema_version"] = 2
         with self.assertRaisesRegex(MetadataError, "tuning_schema_version"):
             BuildMetadata.from_dict(payload)
 

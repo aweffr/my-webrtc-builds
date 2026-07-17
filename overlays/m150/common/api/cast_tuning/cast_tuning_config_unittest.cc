@@ -119,9 +119,10 @@ int main() {
   using webrtc::cast_tuning::CastTuningLivePatch;
   using webrtc::cast_tuning::FecMode;
   using webrtc::cast_tuning::Profile;
+  using webrtc::cast_tuning::SpatialAdaptiveQpMode;
 
-  Expect(webrtc::cast_tuning::kTuningSchemaVersion == 2,
-         "current CastTuning schema must be version 2");
+  Expect(webrtc::cast_tuning::kTuningSchemaVersion == 3,
+         "current CastTuning schema must be version 3");
 
   const CastTuningConfig upstream =
       CastTuningConfig::ForProfile(Profile::kUpstream);
@@ -131,7 +132,7 @@ int main() {
 
   const CastTuningConfig detail =
       CastTuningConfig::ForProfile(Profile::kDetailIdle);
-  Expect(detail.schema_version == 2, "new profiles must use schema version 2");
+  Expect(detail.schema_version == 3, "new profiles must use schema version 3");
   Expect(detail.sender.max_width == 1920, "DETAIL_IDLE width");
   Expect(detail.sender.max_height == 1080, "DETAIL_IDLE height");
   Expect(detail.sender.max_fps == 15, "DETAIL_IDLE fps");
@@ -146,6 +147,12 @@ int main() {
              !detail.encoder.data_rate_window_ms,
          "schema v2 low-latency profiles must not set DataRateLimits defaults");
   Expect(detail.Validate().ok(), "DETAIL_IDLE must validate");
+
+  const CastTuningConfig previous =
+      CastTuningConfig::ForProfile(Profile::kDetailIdle, 2);
+  Expect(!previous.encoder.video_toolbox_spatial_adaptive_qp,
+         "schema v2 must not invent a spatial adaptive QP setting");
+  Expect(previous.Validate().ok(), "schema v2 profile must remain valid");
 
   const CastTuningConfig legacy =
       CastTuningConfig::ForProfile(Profile::kDetailIdle, 1);
@@ -171,6 +178,14 @@ int main() {
   invalid = detail;
   invalid.encoder.h264_level = "9.9";
   Expect(!invalid.Validate().ok(), "unsupported H264 level must fail");
+  invalid = detail;
+  invalid.encoder.video_toolbox_spatial_adaptive_qp =
+      SpatialAdaptiveQpMode::kDefault;
+  Expect(!invalid.Validate().ok(),
+         "spatial adaptive QP must conflict with low-latency rate control");
+  invalid.encoder.video_toolbox_low_latency_rate_control = false;
+  Expect(invalid.Validate().ok(),
+         "ordinary VideoToolbox mode must accept spatial adaptive QP");
   invalid = detail;
   invalid.recovery.nack_enabled = false;
   invalid.recovery.rtx_enabled = true;
