@@ -45,6 +45,49 @@ class CastTuningNativeContractTests(unittest.TestCase):
         self.assertIn("resetCompressionSessionForRuntimeMaxQpIfNeeded", transformed)
         self.assertIn("encoderSessionId:encodeParams->encoder_session_id", transformed)
 
+    def test_h265_hook_patch_applies_to_exact_m150_source(self) -> None:
+        relative_paths = [
+            Path("sdk/objc/components/video_codec/RTCVideoEncoderH265.h"),
+            Path("sdk/objc/components/video_codec/RTCVideoEncoderH265.mm"),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            checkout = Path(directory)
+            subprocess.run(
+                [
+                    "git",
+                    "apply",
+                    *[f"--include={path.as_posix()}" for path in relative_paths],
+                    str(ROOT / "patches" / "m150" / "h265_ios.patch"),
+                ],
+                cwd=checkout,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "apply",
+                    *[f"--include={path.as_posix()}" for path in relative_paths],
+                    str(ROOT / "patches" / "m150" / "cast_tuning_hooks.patch"),
+                ],
+                cwd=checkout,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            header = (checkout / relative_paths[0]).read_text()
+            implementation = (checkout / relative_paths[1]).read_text()
+
+        self.assertIn("castTuningOptions", header)
+        self.assertIn("kVTVideoEncoderSpecification_EnableLowLatencyRateControl", implementation)
+        self.assertIn("kVTCompressionPropertyKey_SpatialAdaptiveQPLevel", implementation)
+        self.assertIn("encoder_spatial_adaptive_qp_applied", implementation)
+        self.assertIn("kVTCompressionPropertyKey_MaxAllowedFrameQP", implementation)
+        self.assertIn("VTSessionCopyProperty", implementation)
+        self.assertIn("resetCompressionSessionForRuntimeMaxQpIfNeeded", implementation)
+        self.assertIn('event[@"codec_name"] = @"H265"', implementation)
+
     def test_native_contract_tests_use_platform_neutral_paths(self) -> None:
         platform_absolute_path = re.compile(r'"(?:/|[A-Za-z]:[\\/]|\\\\)')
         violations: list[str] = []

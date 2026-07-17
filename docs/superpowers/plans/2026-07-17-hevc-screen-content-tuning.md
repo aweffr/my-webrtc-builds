@@ -144,40 +144,40 @@ git commit -m "feat: route cast tuning to hevc encoder"
 - Modify: `patches/m150/cast_tuning_hooks.patch`
 - Modify: `patches/m150/SOURCES.md`
 
-- [ ] **Step 1: Add a transformed H.265 source test before patch changes**
+- [x] **Step 1: Add a transformed H.265 source test before patch changes**
 
 Apply prerequisite patches in target order, then require the transformed H.265
 header/implementation to contain `castTuningOptions`, Apple low-latency rate
 control, spatial adaptive QP, supported-property/readback checks, runtime max-QP
 provider/result blocks, and `codec_name=H265` events.
 
-- [ ] **Step 2: Run the transformed-source test and verify RED**
+- [x] **Step 2: Run the transformed-source test and verify RED**
 
 ```bash
 python3 -m unittest tests.test_cast_tuning_overlay.CastTuningNativeContractTests.test_h265_hook_patch_applies_to_exact_m150_source -v
 ```
 
-- [ ] **Step 3: Add the option-aware initializer and session specification**
+- [x] **Step 3: Add the option-aware initializer and session specification**
 
 Keep the old initializer by delegating to empty options. Build macOS encoder
 specifications from `hardware_policy`; add low-latency rate control only for
 explicit true and do not retry an explicitly requested low-latency session as
 ordinary.
 
-- [ ] **Step 4: Add session properties and effective evidence**
+- [x] **Step 4: Add session properties and effective evidence**
 
 Apply realtime and frame reordering. On macOS 15+, map `DEFAULT`/`DISABLE` to
 the public QP modulation constants, check support, set/read back, and emit
 codec-tagged state/OSStatus. Older/unsupported runtimes continue with explicit
 unsupported evidence.
 
-- [ ] **Step 5: Port runtime max-QP session replacement**
+- [x] **Step 5: Port runtime max-QP session replacement**
 
 For a changed generation, replace only the H.265 compression session before
 the next frame. Apply/read back the cap before first encode; emit actual H.265
 keyframe QP/bytes with the same generation and session ID.
 
-- [ ] **Step 6: Verify exact patch order GREEN and commit**
+- [x] **Step 6: Verify exact patch order GREEN and commit**
 
 ```bash
 python3 -m unittest tests.test_cast_tuning_overlay -v

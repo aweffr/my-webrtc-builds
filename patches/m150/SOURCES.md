@@ -78,4 +78,4 @@ contains only the M150 GN wiring and source hooks required by the versioned
 
 | Project patch | SHA-256 |
 | --- | --- |
-| `cast_tuning_hooks.patch` | `5c5bbdfb1ccff2886afb824c8a7438356d8f36de78cf88e1a362bd5888e1b5ec` |
+| `cast_tuning_hooks.patch` | `0b7b9af7235b428bd69dd6967b2d70799487c1ecaa45f09035710438e29fe62f` |
