@@ -426,7 +426,7 @@ std::optional<CastTuningConfig> CastTuningConfig::ParseJson(
   const int schema_version = root["schema_version"].asInt();
   if (schema_version < kMinimumTuningSchemaVersion ||
       schema_version > kTuningSchemaVersion) {
-    *error = "schema_version must be 1 or 2";
+    *error = "schema_version must be 1, 2, or 3";
     return std::nullopt;
   }
   std::optional<Profile> profile = ParseProfile(root, error);

@@ -61,7 +61,7 @@ int RunCastTuningJsonContractTests() {
          "DataRateLimits conflict must be explicit");
 
   config = CastTuningConfig::ParseJson(
-      R"({"schema_version":3,"profile":"UPSTREAM","enabled":true,"encoder":{"video_toolbox_low_latency_rate_control":false,"video_toolbox_spatial_adaptive_qp":"DEFAULT"}})",
+      R"({"schema_version":3,"profile":"UPSTREAM","encoder":{"video_toolbox_low_latency_rate_control":false,"video_toolbox_spatial_adaptive_qp":"DEFAULT"}})",
       &error);
   Expect(config.has_value(), error.c_str());
   Expect(config->encoder.video_toolbox_spatial_adaptive_qp ==
@@ -69,7 +69,7 @@ int RunCastTuningJsonContractTests() {
          "schema v3 must parse DEFAULT spatial adaptive QP");
 
   config = CastTuningConfig::ParseJson(
-      R"({"schema_version":3,"profile":"UPSTREAM","enabled":true,"encoder":{"video_toolbox_low_latency_rate_control":false,"video_toolbox_spatial_adaptive_qp":"DISABLE"}})",
+      R"({"schema_version":3,"profile":"UPSTREAM","encoder":{"video_toolbox_low_latency_rate_control":false,"video_toolbox_spatial_adaptive_qp":"DISABLE"}})",
       &error);
   Expect(config.has_value(), error.c_str());
   Expect(config->encoder.video_toolbox_spatial_adaptive_qp ==
@@ -77,7 +77,7 @@ int RunCastTuningJsonContractTests() {
          "schema v3 must parse DISABLE spatial adaptive QP");
 
   Expect(!CastTuningConfig::ParseJson(
-              R"({"schema_version":2,"profile":"UPSTREAM","enabled":true,"encoder":{"video_toolbox_spatial_adaptive_qp":"DEFAULT"}})",
+              R"({"schema_version":2,"profile":"UPSTREAM","encoder":{"video_toolbox_spatial_adaptive_qp":"DEFAULT"}})",
               &error)
               .has_value(),
          "schema v2 must reject the schema v3 spatial adaptive QP setting");
@@ -85,13 +85,13 @@ int RunCastTuningJsonContractTests() {
          "schema v2 rejection must identify schema version 3");
 
   Expect(!CastTuningConfig::ParseJson(
-              R"({"schema_version":3,"profile":"UPSTREAM","enabled":true,"encoder":{"video_toolbox_spatial_adaptive_qp":"UNKNOWN"}})",
+              R"({"schema_version":3,"profile":"UPSTREAM","encoder":{"video_toolbox_spatial_adaptive_qp":"UNKNOWN"}})",
               &error)
               .has_value(),
          "unknown spatial adaptive QP mode must fail");
 
   Expect(!CastTuningConfig::ParseJson(
-              R"({"schema_version":3,"profile":"UPSTREAM","enabled":true,"encoder":{"video_toolbox_low_latency_rate_control":true,"video_toolbox_spatial_adaptive_qp":"DEFAULT"}})",
+              R"({"schema_version":3,"profile":"UPSTREAM","encoder":{"video_toolbox_low_latency_rate_control":true,"video_toolbox_spatial_adaptive_qp":"DEFAULT"}})",
               &error)
               .has_value(),
          "spatial adaptive QP and low-latency rate control must conflict");

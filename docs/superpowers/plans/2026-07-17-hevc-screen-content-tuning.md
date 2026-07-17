@@ -465,3 +465,7 @@ quality-priority, Main 4:4:4, and VBR/presets.
   because the shared CastTuning patch referenced macOS-only H.265 ObjC files.
   The HEVC hunks were split into `macos_hevc_cast_tuning.patch`, which is now
   applied only by macOS targets; the full local suite passed all 108 tests.
+- 2026-07-17: macOS arm64 run `29591455289` compiled and linked the complete
+  framework, then failed native validation because new schema-3 JSON fixtures
+  included an unsupported root `enabled` field. The fixtures now rely on the
+  established implicit enable rule, and the schema error names versions 1–3.
