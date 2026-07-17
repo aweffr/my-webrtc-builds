@@ -107,7 +107,10 @@ class TargetConfigTests(unittest.TestCase):
         for name in ("macos-x64", "macos-arm64"):
             target = get_target(name)
             self.assertEqual(target.overlays, ("common", "macos"))
-            self.assertEqual(target.patches[-1], "cast_tuning_hooks.patch")
+            self.assertEqual(target.patches[-2:], (
+                "cast_tuning_hooks.patch",
+                "macos_hevc_cast_tuning.patch",
+            ))
             self.assertEqual(
                 target.validation_targets,
                 ("api/cast_tuning:cast_tuning_native_tests",),

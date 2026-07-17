@@ -69,7 +69,12 @@ class CastTuningNativeContractTests(unittest.TestCase):
                     "git",
                     "apply",
                     *[f"--include={path.as_posix()}" for path in relative_paths],
-                    str(ROOT / "patches" / "m150" / "cast_tuning_hooks.patch"),
+                    str(
+                        ROOT
+                        / "patches"
+                        / "m150"
+                        / "macos_hevc_cast_tuning.patch"
+                    ),
                 ],
                 cwd=checkout,
                 check=True,

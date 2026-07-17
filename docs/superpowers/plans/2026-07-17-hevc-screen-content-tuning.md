@@ -461,3 +461,7 @@ quality-priority, Main 4:4:4, and VBR/presets.
 - 2026-07-17: Schema-3 RED failed on the missing enum/field and metadata version
   exactly as intended. The focused suite then passed 14 tests and the complete
   repository suite passed all 105 tests after the minimal implementation.
+- 2026-07-17: Initial Android run `29590678277` failed during source prepare
+  because the shared CastTuning patch referenced macOS-only H.265 ObjC files.
+  The HEVC hunks were split into `macos_hevc_cast_tuning.patch`, which is now
+  applied only by macOS targets; the full local suite passed all 108 tests.

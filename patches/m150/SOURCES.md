@@ -72,10 +72,11 @@ and
 | `macos_h265_framework.patch` | `948a39aad68e4d579bb948ca05fcbcdf40bbe1bfccb4f42419754982fe870ff4` |
 | `android_java8.patch` | `88aa7c036d677815cd461e499d7c7d9f14fdfcc66574f943c89c8891c5f3a980` |
 
-`cast_tuning_hooks.patch` is authored by this project under Apache-2.0. It
-contains only the M150 GN wiring and source hooks required by the versioned
-`overlays/m150` CastTuning shim.
+`cast_tuning_hooks.patch` and `macos_hevc_cast_tuning.patch` are authored by
+this project under Apache-2.0. They contain the shared M150 CastTuning wiring
+and the macOS-only HEVC VideoToolbox hooks, respectively.
 
 | Project patch | SHA-256 |
 | --- | --- |
-| `cast_tuning_hooks.patch` | `e7ed9ce07c545b38744f3e7cfbc43c398c114e201409eb1814e29e4bde18ee0e` |
+| `cast_tuning_hooks.patch` | `8db256b004b0b84db4df09c6c4b6b1fff3761f53d13047a0ae5288f0b96cfa68` |
+| `macos_hevc_cast_tuning.patch` | `a30908981affb37f40eee2de628af3ceae8cada1bfc7de9f813a17d01b0397d9` |
