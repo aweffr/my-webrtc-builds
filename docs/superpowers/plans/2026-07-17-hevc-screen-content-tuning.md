@@ -198,27 +198,27 @@ git commit -m "feat: tune videotoolbox hevc sessions"
 - Modify: `.github/workflows/build-android.yml`
 - Modify: public documentation files
 
-- [ ] **Step 1: Write failing verifier/probe assertions**
+- [x] **Step 1: Write failing verifier/probe assertions**
 
 Require the H.265 option-aware API and linked feature symbols. Require the AAR
 consumer smoke to find H.265 as well as H.264. Probe evidence
 must include normal `DEFAULT`, normal `DISABLE`, low-latency, and H.265 runtime
 QP `32 -> 22 -> 32` on three distinct encoder sessions.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 ```bash
 python3 -m unittest tests.test_verify -v
 bash -n tools/run-macos-videotoolbox-probe.sh
 ```
 
-- [ ] **Step 3: Implement verifier and probe cases**
+- [x] **Step 3: Implement verifier and probe cases**
 
 Use the packaged framework API for runtime QP. Record framework SHA,
 architecture, OS/hardware, codec, encoder/session IDs, requested/effective
 feature state, QP, bytes, and errors.
 
-- [ ] **Step 4: Run the full local gate**
+- [x] **Step 4: Run the full local gate**
 
 ```bash
 python3 -m compileall -q builder tests
@@ -227,7 +227,7 @@ actionlint .github/workflows/*.yml
 git diff --check
 ```
 
-- [ ] **Step 5: Run clean-context review, fix accepted Critical/High findings, and commit**
+- [x] **Step 5: Run clean-context review, fix accepted Critical/High findings, and commit**
 
 ```bash
 git add builder/verify.py tests/test_verify.py tools README.md README_CN.md docs

@@ -38,8 +38,14 @@ public final class MainActivity extends Activity {
       if (!hasH264) {
         throw new IllegalStateException("H264 decoder capability is unavailable");
       }
+      boolean hasH265 =
+          Arrays.stream(codecs)
+              .anyMatch(codec -> "H265".equalsIgnoreCase(codec.name));
+      if (!hasH265) {
+        throw new IllegalStateException("H265 decoder capability is unavailable");
+      }
       CastTuningConfig tuningConfig = CastTuningConfig.fromJson(
-          "{\"schema_version\":2,\"profile\":\"DETAIL_IDLE\"}");
+          "{\"schema_version\":3,\"profile\":\"DETAIL_IDLE\"}");
       try (CastTuningController controller = new CastTuningController(tuningConfig)) {
         controller.configureFactory(PeerConnectionFactory.builder());
         controller.configurePeerConnection(

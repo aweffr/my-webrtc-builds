@@ -46,8 +46,14 @@ macOS framework 提供 `RTCCastTuningConfiguration`、
 `CastTuningConfig`、`CastTuningAndroidConfig`、`CastTuningController`：
 
 macOS factory builder 必须显式传入支持硬件加速的
-`RTCVideoEncoderFactory`（例如 VideoToolbox H264 factory），不会隐式引入
+`RTCVideoEncoderFactory`（例如 VideoToolbox H264/H265 factory），不会隐式引入
 WebRTC software codec factory。
+
+schema 3 新增可选的 macOS HEVC encoder 字段
+`video_toolbox_spatial_adaptive_qp`，可取 `DEFAULT` 或 `DISABLE`。该字段通过
+macOS 15+ 的公开 VideoToolbox API 生效，不能与
+`video_toolbox_low_latency_rate_control=true` 同时启用；省略时保留 encoder
+默认行为。
 
 ```java
 CastTuningConfig config = CastTuningAndroidConfig.fromIntent(baseJson, intent);

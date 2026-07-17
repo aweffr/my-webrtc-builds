@@ -83,9 +83,13 @@ class CastTuningNativeContractTests(unittest.TestCase):
         self.assertIn("kVTVideoEncoderSpecification_EnableLowLatencyRateControl", implementation)
         self.assertIn("kVTCompressionPropertyKey_SpatialAdaptiveQPLevel", implementation)
         self.assertIn("encoder_spatial_adaptive_qp_applied", implementation)
+        self.assertIn('event_type" : @"encoder_session_properties', implementation)
+        self.assertIn('effective_realtime', implementation)
+        self.assertIn('effective_allow_frame_reordering', implementation)
         self.assertIn("kVTCompressionPropertyKey_MaxAllowedFrameQP", implementation)
         self.assertIn("VTSessionCopyProperty", implementation)
         self.assertIn("resetCompressionSessionForRuntimeMaxQpIfNeeded", implementation)
+        self.assertIn("qp.value_or(-1)", implementation)
         self.assertIn('event[@"codec_name"] = @"H265"', implementation)
 
     def test_native_contract_tests_use_platform_neutral_paths(self) -> None:

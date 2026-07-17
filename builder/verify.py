@@ -237,6 +237,8 @@ def verify_binaries(
                 "RTCVideoDecoderH265",
                 "RTCCastTuningController",
                 "kVTVideoEncoderSpecification_EnableLowLatencyRateControl",
+                "kVTCompressionPropertyKey_SpatialAdaptiveQPLevel",
+                "kVTCompressionPropertyKey_MaxAllowedFrameQP",
             ),
         )
         return

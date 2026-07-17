@@ -33,7 +33,7 @@ on:
         required: true
         type: string
       macos_probe_evidence_json:
-        description: JSON emitted by tools/run-macos-videotoolbox-probe.sh
+        description: JSON emitted by probing the exact macOS arm64 package
         required: true
         type: string
 

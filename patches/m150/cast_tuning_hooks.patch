@@ -1175,7 +1175,7 @@ index 54d8680..e32a122 100644
 \ No newline at end of file
 +@end
 diff --git a/sdk/objc/components/video_codec/RTCVideoEncoderH265.mm b/sdk/objc/components/video_codec/RTCVideoEncoderH265.mm
-index 3e1e274..f3f8c24 100644
+index 3e1e274..1e985f8 100644
 --- a/sdk/objc/components/video_codec/RTCVideoEncoderH265.mm
 +++ b/sdk/objc/components/video_codec/RTCVideoEncoderH265.mm
 @@ -48,7 +48,13 @@ static constexpr int ErrorCallbackDefaultValue = -1;
@@ -1394,21 +1394,83 @@ index 3e1e274..f3f8c24 100644
  #endif
    [self configureCompressionSession];
    return WEBRTC_VIDEO_CODEC_OK;
-@@ -466,11 +571,98 @@ void compressionOutputCallback(void* encoder,
+@@ -466,11 +571,159 @@ void compressionOutputCallback(void* encoder,
 
  - (void)configureCompressionSession {
    RTC_DCHECK(_compressionSession);
-+  NSNumber *realtime = _castTuningOptions[@"realtime"];
-   SetVTSessionProperty(_compressionSession, kVTCompressionPropertyKey_RealTime,
+-  SetVTSessionProperty(_compressionSession, kVTCompressionPropertyKey_RealTime,
 -                       _isLowLatencyEnabled);
-+                       realtime ? realtime.boolValue : _isLowLatencyEnabled);
++  NSNumber *realtime = _castTuningOptions[@"realtime"];
++  const BOOL requestedRealtime =
++      realtime ? realtime.boolValue : _isLowLatencyEnabled;
++  OSStatus realtimeStatus = VTSessionSetProperty(
++      _compressionSession,
++      kVTCompressionPropertyKey_RealTime,
++      requestedRealtime ? kCFBooleanTrue : kCFBooleanFalse);
++  NSNumber *effectiveRealtime = nil;
++  if (realtimeStatus == noErr) {
++    CFTypeRef copiedValue = nullptr;
++    realtimeStatus = VTSessionCopyProperty(
++        _compressionSession,
++        kVTCompressionPropertyKey_RealTime,
++        nullptr,
++        &copiedValue);
++    if (realtimeStatus == noErr && copiedValue &&
++        CFGetTypeID(copiedValue) == CFBooleanGetTypeID()) {
++      effectiveRealtime = @(CFBooleanGetValue((CFBooleanRef)copiedValue));
++    } else if (realtimeStatus == noErr) {
++      realtimeStatus = kVTPropertyNotSupportedErr;
++    }
++    if (copiedValue) {
++      CFRelease(copiedValue);
++    }
++  }
    // SetVTSessionProperty(_compressionSession,
    // kVTCompressionPropertyKey_ProfileLevel, _profile);
 -  SetVTSessionProperty(_compressionSession, kVTCompressionPropertyKey_AllowFrameReordering, false);
-+  SetVTSessionProperty(
++  const BOOL requestedFrameReordering =
++      [_castTuningOptions[@"allow_frame_reordering"] boolValue];
++  OSStatus frameReorderingStatus = VTSessionSetProperty(
 +      _compressionSession,
 +      kVTCompressionPropertyKey_AllowFrameReordering,
-+      [_castTuningOptions[@"allow_frame_reordering"] boolValue]);
++      requestedFrameReordering ? kCFBooleanTrue : kCFBooleanFalse);
++  NSNumber *effectiveFrameReordering = nil;
++  if (frameReorderingStatus == noErr) {
++    CFTypeRef copiedValue = nullptr;
++    frameReorderingStatus = VTSessionCopyProperty(
++        _compressionSession,
++        kVTCompressionPropertyKey_AllowFrameReordering,
++        nullptr,
++        &copiedValue);
++    if (frameReorderingStatus == noErr && copiedValue &&
++        CFGetTypeID(copiedValue) == CFBooleanGetTypeID()) {
++      effectiveFrameReordering =
++          @(CFBooleanGetValue((CFBooleanRef)copiedValue));
++    } else if (frameReorderingStatus == noErr) {
++      frameReorderingStatus = kVTPropertyNotSupportedErr;
++    }
++    if (copiedValue) {
++      CFRelease(copiedValue);
++    }
++  }
++  void (^sessionEvidenceHandler)(NSDictionary<NSString *, id> *) =
++      _castTuningOptions[@"encoder_evidence_handler"];
++  if (sessionEvidenceHandler) {
++    NSMutableDictionary<NSString *, id> *event = [@{
++      @"event_type" : @"encoder_session_properties",
++      @"requested_realtime" : @(requestedRealtime),
++      @"effective_realtime" : effectiveRealtime ?: [NSNull null],
++      @"realtime_os_status" : @(realtimeStatus),
++      @"requested_allow_frame_reordering" : @(requestedFrameReordering),
++      @"effective_allow_frame_reordering" :
++          effectiveFrameReordering ?: [NSNull null],
++      @"allow_frame_reordering_os_status" : @(frameReorderingStatus),
++      @"encoder_id" : _encoderId ?: @"UNKNOWN",
++      @"encoder_session_id" : _encoderSessionId ?: @"UNKNOWN",
++    } mutableCopy];
++    event[@"codec_name"] = @"H265";
++    sessionEvidenceHandler(event);
++  }
 +  NSNumber *maxQp = _castTuningOptions[@"max_qp"];
 +  if (maxQp && !_castTuningOptions[@"encoder_runtime_qp_provider"]) {
 +    SetVTSessionProperty(_compressionSession,
@@ -1495,7 +1557,7 @@ index 3e1e274..f3f8c24 100644
    [self setEncoderBitrateBps:_targetBitrateBps];
 
    // Set a relatively large value for keyframe emission (7200 frames or 4 minutes).
-@@ -483,6 +675,116 @@ void compressionOutputCallback(void* encoder,
+@@ -483,6 +736,116 @@ void compressionOutputCallback(void* encoder,
    }
  }
 
@@ -1612,7 +1674,7 @@ index 3e1e274..f3f8c24 100644
  - (void)destroyCompressionSession {
    if (_compressionSession) {
      VTCompressionSessionInvalidate(_compressionSession);
-@@ -515,7 +817,10 @@ void compressionOutputCallback(void* encoder,
+@@ -515,7 +878,10 @@ void compressionOutputCallback(void* encoder,
                   height:(int32_t)height
             renderTimeMs:(int64_t)renderTimeMs
                timestamp:(uint32_t)timestamp
@@ -1624,10 +1686,14 @@ index 3e1e274..f3f8c24 100644
    if (status != noErr) {
      RTC_LOG(LS_ERROR) << "h265 encode failed.";
      return;
-@@ -584,6 +889,25 @@ void compressionOutputCallback(void* encoder,
-       frame.qp = @(qp.value_or(0));
-   }
-
+@@ -581,7 +947,26 @@ void compressionOutputCallback(void* encoder,
+   if (_useAnnexB) {
+       _h265BitstreamParser.ParseBitstream(*buffer);
+       auto qp = _h265BitstreamParser.GetLastSliceQp();
+-      frame.qp = @(qp.value_or(0));
++      frame.qp = @(qp.value_or(-1));
++  }
++
 +  if (isKeyframe && maxQpGeneration > 0 && frame.qp) {
 +    NSMutableDictionary<NSString *, id> *event = [@{
 +      @"event_type" : @"encoder_qp_sample",
@@ -1645,12 +1711,10 @@ index 3e1e274..f3f8c24 100644
 +    if (resultHandler) {
 +      resultHandler(event);
 +    }
-+  }
-+
+   }
+
    BOOL res = _callback(frame, [[RTC_OBJC_TYPE (RTCCodecSpecificInfoH265) alloc] init]);
-   if (!res) {
-     RTC_LOG(LS_ERROR) << "Encode callback failed.";
-@@ -603,4 +927,4 @@ void compressionOutputCallback(void* encoder,
+@@ -603,4 +988,4 @@ void compressionOutputCallback(void* encoder,
          VTCompressionSessionCompleteFrames(_compressionSession, kCMTimeInvalid);
  }
 

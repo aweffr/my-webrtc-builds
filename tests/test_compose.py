@@ -410,7 +410,8 @@ class PreviewReleaseManifestTests(unittest.TestCase):
                 json.dumps(
                     {
                         "schema_version": 1,
-                        "xcframework_zip_sha256": sha256(xcframework),
+                        "artifact_filename": macos_arm64.name,
+                        "macos_package_sha256": sha256(macos_arm64),
                         "hardware_model": "Mac16,7",
                         "os_version": "26.5.2",
                         "macos_x64_hardware_runtime_verified": False,

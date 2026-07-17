@@ -91,20 +91,20 @@ the exact GitHub Actions outputs and run both local gates:
 ```bash
 tools/android-aar-smoke.sh ANDROID_RUN_ID
 
-gh run download XCFRAMEWORK_RUN_ID \
+gh run download MACOS_ARM64_RUN_ID \
   -R aweffr/my-webrtc-builds \
-  -n WebRTC-m150-macos-universal-xcframework \
-  -D /tmp/webrtc-m150-xcframework
+  -n webrtc-m150-macos-arm64 \
+  -D /tmp/webrtc-m150-macos-arm64
 tools/run-macos-videotoolbox-probe.sh \
-  /tmp/webrtc-m150-xcframework/WebRTC-m150-macos-universal.xcframework.zip
+  /tmp/webrtc-m150-macos-arm64/webrtc-m150-macos-arm64.tar.gz
 ```
 
 The Android script must finish on the local API 31 arm64-v8a emulator and emit
 an evidence JSON path. The macOS script must run on a real Apple Silicon Mac,
-prove both ordinary and low-latency 1920x1080 H.264 session creation, and show
-an RTVC Encoder ID for low-latency mode. macOS x64 remains hosted static
-validation only and is recorded explicitly as lacking hardware runtime
-coverage.
+prove ordinary and low-latency H.264 plus HEVC `DEFAULT`, `DISABLE`, and
+low-latency modes, including effective property readback and runtime MaxQP
+evidence. macOS x64 remains hosted static validation only and is recorded
+explicitly as lacking hardware runtime coverage.
 
 Pass the compact JSON contents to the scoped preview workflow:
 

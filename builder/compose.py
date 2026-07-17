@@ -379,8 +379,10 @@ def create_preview_release_manifest(
     macos_evidence = _load_json_object(macos_probe_evidence, "macOS VideoToolbox probe evidence")
     if macos_evidence.get("schema_version") != 1:
         raise CompositionError("macOS probe evidence schema_version must be 1")
-    if macos_evidence.get("xcframework_zip_sha256") != _sha256(xcframework):
-        raise CompositionError("macOS probe evidence XCFramework SHA does not match preview asset")
+    if macos_evidence.get("artifact_filename") != macos_arm64_package.name:
+        raise CompositionError("macOS probe evidence artifact filename is not the arm64 package")
+    if macos_evidence.get("macos_package_sha256") != _sha256(macos_arm64_package):
+        raise CompositionError("macOS probe evidence SHA does not match the arm64 package")
     modes = macos_evidence.get("modes")
     if not isinstance(modes, list):
         raise CompositionError("macOS probe evidence modes must be an array")

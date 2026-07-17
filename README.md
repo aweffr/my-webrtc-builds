@@ -62,8 +62,14 @@ Use `RTCCastTuningConfiguration`, `RTCCastTuningFactoryBuilder`, and
 `CastTuningConfig`, `CastTuningAndroidConfig`, and `CastTuningController`:
 
 The macOS factory builder requires an explicit hardware-capable
-`RTCVideoEncoderFactory` (for example, the VideoToolbox H264 factory). It does
-not pull in WebRTC's software codec factory implicitly.
+`RTCVideoEncoderFactory` (for example, the VideoToolbox H264/H265 factory). It
+does not pull in WebRTC's software codec factory implicitly.
+
+Schema 3 adds the optional macOS HEVC encoder field
+`video_toolbox_spatial_adaptive_qp`, with `DEFAULT` and `DISABLE` values. It is
+applied through the public macOS 15+ VideoToolbox API and cannot be combined
+with `video_toolbox_low_latency_rate_control=true`. Omitting it preserves the
+encoder default.
 
 ```java
 CastTuningConfig config = CastTuningAndroidConfig.fromIntent(baseJson, intent);

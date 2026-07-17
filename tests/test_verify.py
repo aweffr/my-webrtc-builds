@@ -265,7 +265,9 @@ class BinaryVerificationTests(unittest.TestCase):
                     "nm": (
                         "H264EncoderImpl H264DecoderImpl RTCVideoEncoderH265 "
                         "RTCVideoDecoderH265 RTCCastTuningController "
-                        "kVTVideoEncoderSpecification_EnableLowLatencyRateControl"
+                        "kVTVideoEncoderSpecification_EnableLowLatencyRateControl "
+                        "kVTCompressionPropertyKey_SpatialAdaptiveQPLevel "
+                        "kVTCompressionPropertyKey_MaxAllowedFrameQP"
                     ),
                 }
             )
@@ -334,6 +336,39 @@ class BinaryVerificationTests(unittest.TestCase):
                 VerificationError, "EnableLowLatencyRateControl"
             ):
                 verify_binaries("macos-arm64", root, runner)
+
+    def test_macos_missing_hevc_qp_tuning_symbols_are_rejected(self) -> None:
+        for missing in (
+            "kVTCompressionPropertyKey_SpatialAdaptiveQPLevel",
+            "kVTCompressionPropertyKey_MaxAllowedFrameQP",
+        ):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "lib").mkdir()
+                (root / "lib" / "libwebrtc.a").write_bytes(b"archive")
+                framework = root / "Frameworks" / "WebRTC.framework"
+                framework.mkdir(parents=True)
+                (framework / "WebRTC").write_bytes(b"framework")
+                symbols = {
+                    "H264EncoderImpl",
+                    "H264DecoderImpl",
+                    "RTCVideoEncoderH265",
+                    "RTCVideoDecoderH265",
+                    "RTCCastTuningController",
+                    "kVTVideoEncoderSpecification_EnableLowLatencyRateControl",
+                    "kVTCompressionPropertyKey_SpatialAdaptiveQPLevel",
+                    "kVTCompressionPropertyKey_MaxAllowedFrameQP",
+                }
+                symbols.remove(missing)
+                runner = FakeRunner(
+                    {
+                        "/usr/bin/ar": "peer_connection.o",
+                        "lipo": "arm64",
+                        "nm": " ".join(sorted(symbols)),
+                    }
+                )
+                with self.assertRaisesRegex(VerificationError, missing):
+                    verify_binaries("macos-arm64", root, runner)
 
     def test_windows_checks_coff_architecture_and_symbols(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
